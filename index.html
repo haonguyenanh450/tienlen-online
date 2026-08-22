@@ -1217,7 +1217,8 @@ function renderHand(){
   let el=$('hand');
   $('playBtn').style.display=selected.size?'block':'none';
   el.innerHTML='';
-  let n=hands[0].length;
+  const handSeat=(onlineRoomData&&gameOn&&onlineSeat>=0)?onlineSeat:0;
+  let n=(hands[handSeat]||[]).length;
   if(!n)return;
 
   // Khoảng cách vừa đủ để nhìn rõ mặt từng lá nhưng vẫn giống một tay bài ngoài đời.
@@ -1230,7 +1231,7 @@ function renderHand(){
   const maxAngle=mobile?20:23;
 
   for(let i=0;i<n;i++){
-    const c=hands[0][i];
+    const c=hands[handSeat][i];
     const x=-total/2+i*spread;
     const middle=(n-1)/2;
     const normalized=middle?((i-middle)/middle):0;
@@ -1795,6 +1796,7 @@ function startNetworkGame(room){
   passes=room.passes||0;
   passedPlayers=new Set(room.passedPlayers||[]);
   gameOn=true;selected.clear();
+  $('deal').style.display='none';
   renderOnlinePlayers(Object.values(room.players||{}));
   render();
   startTurnTimer();
@@ -1863,6 +1865,7 @@ const __oldRender=render;
 function render(){
   __oldRender();
   if(onlineRoomData&&gameOn){
+    $('turn').textContent=(turn===onlineSeat)?'Lượt của bạn':('Lượt '+((Object.values(onlineRoomData.players||{}).find(x=>x.seat===turn)?.name)||('người chơi '+(turn+1))));
     for(let p=0;p<4;p++){
       const pl=Object.values(onlineRoomData.players||{}).find(x=>x.seat===p);
       const el=document.querySelector('.p'+p);
