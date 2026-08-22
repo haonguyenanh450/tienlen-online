@@ -1033,9 +1033,9 @@ function deck(){
   return shuffle(d);
 }
 function startBot(){
-  // Chế độ Bot là một ván hoàn toàn độc lập với Online.
-  stopOnlinePoll?.();
-  if(onlineSocket){try{onlineSocket.close()}catch(e){} onlineSocket=null}
+  // BOT: chia bài ngay, không phụ thuộc timer/animation để tránh kẹt trạng thái.
+  try{ stopOnlinePoll(); }catch(e){}
+  try{ if(onlineSocket){onlineSocket.close(); onlineSocket=null;} }catch(e){}
   onlineRoomCode=''; onlinePlayerId=''; onlineSeat=-1; onlineRoomData=null;
   gameMode='bot';
   $('lobby').style.display='none';
@@ -1044,27 +1044,27 @@ function startBot(){
   selected.clear(); last=null; passes=0; passedPlayers.clear(); roundWinner=-1; turn=0; gameOn=false;
   hands=[[],[],[],[]];
   $('hand').innerHTML='';
-  $('deal').style.display='flex';
-  $('dealText').textContent='Đang chia bài...';
 
-  // Chia đúng 52 lá, mỗi ghế đúng 13 lá. Không dùng chung object lá bài.
+  // Chia đủ 52 lá, mỗi người đúng 13 lá, không trùng.
   const d=deck();
   for(let i=0;i<d.length;i++) hands[i%4].push({...d[i]});
 
-  // Hiệu ứng chia bài ngắn, sau đó chắc chắn chuyển sang trạng thái chơi.
-  let shown=0;
-  const dealTimer=setInterval(()=>{
-    shown++;
-    $('dealText').textContent='Đang chia bài '+Math.min(shown,52)+'/52';
-    if(shown>=52){
-      clearInterval(dealTimer);
-      $('deal').style.display='none';
-      gameOn=true;
-      selected.clear();
-      render();
-      startTurnTimer();
-    }
-  },18);
+  // Kết thúc trạng thái chia bài ngay sau khi dữ liệu đã có.
+  gameOn=true;
+  turn=0;
+  selected.clear();
+  $('deal').style.display='none';
+  $('deal').style.visibility='hidden';
+  $('dealText').textContent='';
+  $('turn').textContent='Lượt của bạn';
+  for(let i=0;i<4;i++) $('c'+i).textContent=hands[i].length+' lá';
+  renderHand();
+  renderOtherHands();
+  render();
+  $('deal').style.display='none';
+  $('deal').style.visibility='hidden';
+  $('turn').textContent='Lượt của bạn';
+  startTurnTimer();
 }
 function cardHTML(c){return '<div class="cardface '+c.color+'"><div class="rank">'+c.rank+'</div><div class="suit">'+c.suit+'</div></div>'}
 function renderOtherHands(){
@@ -1901,6 +1901,7 @@ function render(){
     }
   }
 }
+window.startBot=startBot;
 </script>
 </body>
 </html>
