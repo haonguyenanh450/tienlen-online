@@ -1205,7 +1205,7 @@ function render(){
 }
 function renderHand(){
   let el=$('hand');
-  $('playBtn').style.display=(gameOn&&turn===0)?'block':'none';
+  $('playBtn').style.display=(gameOn&&turn===0)?'block':'none'; $('playBtn').disabled=false;
   el.innerHTML='';
   const handSeat=(gameMode==='online'&&onlineRoomData&&gameOn&&onlineSeat>=0)?onlineSeat:0;
   let n=(hands[handSeat]||[]).length;
@@ -1236,7 +1236,6 @@ function renderHand(){
     d.style.transform=`translateX(calc(-50% + ${x}px)) rotate(${angle}deg)`;
     d.style.zIndex=i;
     d.onclick=()=>{
-      // Chỉ cho chọn bài khi đúng lượt của người chơi.
       if(!gameOn || turn!==0)return;
       if(selected.has(i)) selected.delete(i);
       else selected.add(i);
@@ -1300,17 +1299,44 @@ function canBeat(cards,prev){
   return a.v>p.v;
 }
 function playSelected(){
-  if(!gameOn||turn!==0){msg('hint','Chưa đến lượt bạn.');return;}
-  if(!selected.size){msg('hint','Hãy chọn ít nhất 1 lá bài trước.');return;}
-  const cards=[...selected].sort((a,b)=>a-b).map(i=>hands[0][i]).filter(Boolean);
-  if(!cards.length){selected.clear();renderHand();return;}
-  if(!canBeat(cards,last)){msg('hint','Bộ bài không hợp lệ hoặc chưa lớn hơn bộ trước.');return;}
-  hands[0]=hands[0].filter((_,i)=>!selected.has(i));
+  if(!gameOn){
+    msg('hint','Ván chưa bắt đầu.');
+    return;
+  }
+  if(turn!==0){
+    msg('hint','Chưa tới lượt bạn.');
+    return;
+  }
+
+  const hand=hands[0]||[];
+  const indexes=[...selected].filter(i=>Number.isInteger(i)&&i>=0&&i<hand.length).sort((a,b)=>a-b);
+  if(!indexes.length){
+    msg('hint','Hãy chọn ít nhất 1 lá bài.');
+    return;
+  }
+
+  const cards=indexes.map(i=>hand[i]);
+  const valid=canBeat(cards,last);
+  if(!valid){
+    msg('hint',last?'Bộ bài không hợp lệ hoặc chưa lớn hơn bộ trước.':'Bộ bài bạn chọn không hợp lệ.');
+    return;
+  }
+
+  // Xóa đúng các lá đã chọn theo index từ phải sang trái.
+  for(let j=indexes.length-1;j>=0;j--) hand.splice(indexes[j],1);
+
   selected.clear();
-  last={cards,type:typeOf(cards),by:0};
+  last={cards:cards.slice(),type:typeOf(cards),by:0};
   passes=0;
-  passedPlayers.clear();
-  if(!hands[0].length){roundWinner=0;return endGame('Bạn thắng! 🎉');}
+  passedPlayers=new Set();
+
+  render();
+
+  if(!hand.length){
+    roundWinner=0;
+    return endGame('Bạn thắng! 🎉');
+  }
+
   turn=1;
   render();
   startTurnTimer();
