@@ -1032,6 +1032,9 @@ function deck(){
   return shuffle(d);
 }
 function startBot(){
+  // Chuyển hẳn về chế độ Bot: xóa toàn bộ trạng thái online còn sót lại.
+  stopOnlinePoll?.();
+  onlineRoomCode=''; onlinePlayerId=''; onlineSeat=-1; onlineRoomData=null;
   $('lobby').style.display='none';
   $('game').style.display='block';
   renderMyAvatar();
@@ -1483,7 +1486,22 @@ function closeWinAndLobby(){
   closeModal();
   backLobby();
 }
-function backLobby(){stopTurnTimer();$('game').style.display='none';$('lobby').style.display='block';gameOn=false;if($('lobbyExtra'))$('lobbyExtra').innerHTML=''}
+function backLobby(){
+  stopTurnTimer();
+  stopOnlinePoll?.();
+  onlineRoomCode=''; onlinePlayerId=''; onlineSeat=-1; onlineRoomData=null;
+  $('game').style.display='none';$('lobby').style.display='block';gameOn=false;
+  // Trả giao diện về đúng tên Bot mặc định khi rời ván online.
+  for(let p=1;p<4;p++){
+    const el=document.querySelector('.p'+p);
+    if(!el)continue;
+    const badge=el.querySelector('.online-name-badge'); if(badge)badge.remove();
+    const av=el.querySelector('.avatar'); if(av)av.innerHTML='🤖';
+    const textNodes=[...el.childNodes].filter(n=>n.nodeType===3);
+    if(textNodes.length)textNodes[textNodes.length-1].textContent='Bot '+p;
+  }
+  if($('lobbyExtra'))$('lobbyExtra').innerHTML='';
+}
 window.addEventListener('load',()=>{
   let n=localStorage.getItem('tl_session');
   if(n) enter(n);
@@ -1876,6 +1894,15 @@ function render(){
         el.insertBefore(badge,el.querySelector('.handcount'));
       }
       badge.innerHTML=pl.name+verifiedHTML(pl.name);
+    }
+  } else if(gameOn){
+    // Chế độ Bot: tuyệt đối không giữ tên/avatar của người chơi online trước đó.
+    for(let p=1;p<4;p++){
+      const el=document.querySelector('.p'+p); if(!el)continue;
+      const badge=el.querySelector('.online-name-badge'); if(badge)badge.remove();
+      const av=el.querySelector('.avatar'); if(av)av.innerHTML='🤖';
+      const textNodes=[...el.childNodes].filter(n=>n.nodeType===3);
+      if(textNodes.length)textNodes[textNodes.length-1].textContent='Bot '+p;
     }
   }
 }
