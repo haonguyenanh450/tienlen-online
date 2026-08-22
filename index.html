@@ -237,6 +237,11 @@ input{width:100%;padding:13px 15px;margin:7px 0;border-radius:12px;border:1px so
 
 
 </style>
+<style>
+.lobby-user{display:inline-flex!important;align-items:center!important;gap:6px!important;white-space:nowrap!important}
+.header-avatar{width:32px!important;height:32px!important;border-radius:50%!important;object-fit:cover!important;display:inline-block!important;vertical-align:middle!important;border:2px solid #7bd5b8!important;background:#153b31}
+.fallback-avatar{display:grid!important;place-items:center!important}
+</style>
 </head>
 <body>
 <section id="auth" class="screen">
@@ -1033,38 +1038,27 @@ function deck(){
   return shuffle(d);
 }
 function startBot(){
-  // Chế độ Bot là một ván hoàn toàn độc lập với Online.
-  stopOnlinePoll?.();
-  if(onlineSocket){try{onlineSocket.close()}catch(e){} onlineSocket=null}
-  onlineRoomCode=''; onlinePlayerId=''; onlineSeat=-1; onlineRoomData=null;
-  gameMode='bot';
-  $('lobby').style.display='none';
-  $('game').style.display='block';
-  renderMyAvatar();
-  selected.clear(); last=null; passes=0; passedPlayers.clear(); roundWinner=-1; turn=0; gameOn=false;
+  // Bot mode is fully isolated from online mode.
+  try{ stopTurnTimer(); }catch(e){}
+  try{ stopOnlinePoll?.(); }catch(e){}
+  if(typeof onlineSocket!=='undefined' && onlineSocket){try{onlineSocket.close()}catch(e){} onlineSocket=null}
+  if(typeof onlineRoomCode!=='undefined') onlineRoomCode='';
+  if(typeof onlinePlayerId!=='undefined') onlinePlayerId='';
+  if(typeof onlineSeat!=='undefined') onlineSeat=-1;
+  if(typeof onlineRoomData!=='undefined') onlineRoomData=null;
+  gameMode='bot'; gameOn=false; turn=0; last=null; passes=0; roundWinner=-1;
+  selected.clear(); passedPlayers.clear();
   hands=[[],[],[],[]];
-  $('hand').innerHTML='';
-  $('deal').style.display='flex';
-  $('dealText').textContent='Đang chia bài...';
-
-  // Chia đúng 52 lá, mỗi ghế đúng 13 lá. Không dùng chung object lá bài.
+  $('lobby').style.display='none'; $('game').style.display='block';
+  renderMyAvatar();
+  $('deal').style.display='flex'; $('dealText').textContent='Đang chia bài...';
   const d=deck();
-  for(let i=0;i<d.length;i++) hands[i%4].push({...d[i]});
-
-  // Hiệu ứng chia bài ngắn, sau đó chắc chắn chuyển sang trạng thái chơi.
-  let shown=0;
-  const dealTimer=setInterval(()=>{
-    shown++;
-    $('dealText').textContent='Đang chia bài '+Math.min(shown,52)+'/52';
-    if(shown>=52){
-      clearInterval(dealTimer);
-      $('deal').style.display='none';
-      gameOn=true;
-      selected.clear();
-      render();
-      startTurnTimer();
-    }
-  },18);
+  for(let i=0;i<52;i++) hands[i%4].push({...d[i]});
+  // Render the real 13-card hand immediately; the overlay is only a visual effect.
+  gameOn=true; turn=0; selected.clear();
+  render();
+  // Keep the dealing visual brief, then remove it unconditionally.
+  setTimeout(()=>{ $('deal').style.display='none'; $('turn').textContent='Lượt của bạn'; renderHand(); startTurnTimer(); },500);
 }
 function cardHTML(c){return '<div class="cardface '+c.color+'"><div class="rank">'+c.rank+'</div><div class="suit">'+c.suit+'</div></div>'}
 function renderOtherHands(){
@@ -1902,10 +1896,15 @@ function render(){
   }
 }
 </script>
-\n<script>\n/* FINAL GAME STATE FIX: Bot and Online are isolated. */\n(function(){\n  window.startBot = function(){\n    try{ stopTurnTimer(); }catch(e){}\n    try{ stopOnlinePoll(); }catch(e){}\n    onlineRoomCode=''; onlinePlayerId=''; onlineSeat=-1; onlineRoomData=null;\n    gameMode='bot'; gameOn=false; turn=0; last=null; passes=0; roundWinner=-1;\n    selected=new Set(); passedPlayers=new Set();\n    hands=[[],[],[],[]];\n    if($('lobby')) $('lobby').style.display='none';\n    if($('game')) $('game').style.display='block';\n    if($('deal')) $('deal').style.display='flex';\n    if($('dealText')) $('dealText').textContent='Đang chia bài...';\n    renderMyAvatar();\n    const d=deck();\n    for(let i=0;i<52;i++) hands[i%4].push({...d[i]});\n    // Force a real, finite deal animation; never leave the overlay stuck.\n    setTimeout(function(){\n      if($('deal')) $('deal').style.display='none';\n      gameOn=true;\n      turn=0;\n      selected.clear();\n      render();\n      startTurnTimer();\n    },700);\n  };\n\n  window.renderHand = function(){\n    const el=$('hand'); if(!el)return;\n    el.innerHTML='';\n    if($('playBtn')) $('playBtn').style.display=selected.size?'block':'none';\n    const seat=(gameMode==='online' && onlineSeat>=0)?onlineSeat:0;\n    const h=Array.isArray(hands[seat])?hands[seat]:[];\n    if(!h.length){\n      if(gameMode==='bot' && gameOn){\n        // Defensive recovery if another routine accidentally cleared the hand.\n        const d=deck(); hands=[[],[],[],[]]; for(let i=0;i<52;i++)hands[i%4].push({...d[i]});\n      }\n    }\n    const hand=Array.isArray(hands[seat])?hands[seat]:[];\n    if(!hand.length)return;\n    const mobile=window.innerWidth<=650, cardW=mobile?54:66, cardH=mobile?80:96;\n    const spread=Math.min(mobile?27:34,(mobile?300:410)/Math.max(1,hand.length-1));\n    const total=spread*(hand.length-1), middle=(hand.length-1)/2;\n    hand.forEach((c,i)=>{\n      const d=document.createElement('div');\n      d.className='cardface '+(c.color||'')+(selected.has(i)?' selected':'');\n      d.innerHTML='<div class="rank">'+c.rank+'</div><div class="suit">'+c.suit+'</div>';\n      d.style.left='50%'; d.style.width=cardW+'px'; d.style.height=cardH+'px';\n      d.style.bottom=selected.has(i)?'10px':'0';\n      const x=-total/2+i*spread; const angle=middle?((i-middle)/middle)*(mobile?20:23):0;\n      d.style.transform='translateX(calc(-50% + '+x+'px)) rotate('+angle+'deg)';\n      d.style.zIndex=i;\n      d.onclick=function(){ if(!gameOn||turn!==seat)return; if(selected.has(i))selected.delete(i);else selected.add(i); renderHand(); };\n      el.appendChild(d);\n    });\n  };\n})();\n</script>\n</body>
+
+<script>
+/* FINAL GAME STATE FIX: Bot and Online are isolated. */
+(function(){
+  // Make the lobby button use the same robust Bot starter.
+  window.startBot = startBot;
+  window.renderHand = renderHand;
+})();
+</script>
+</body>
 </html>
-<style>
-.lobby-user{display:inline-flex!important;align-items:center!important;gap:6px!important;white-space:nowrap!important}
-.header-avatar{width:32px!important;height:32px!important;border-radius:50%!important;object-fit:cover!important;display:inline-block!important;vertical-align:middle!important;border:2px solid #7bd5b8!important;background:#153b31}
-.fallback-avatar{display:grid!important;place-items:center!important}
-</style>
+
