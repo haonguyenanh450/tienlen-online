@@ -1033,39 +1033,53 @@ function deck(){
   return shuffle(d);
 }
 function startBot(){
-  // BOT: chia bài ngay, không phụ thuộc timer/animation để tránh kẹt trạng thái.
-  try{ stopOnlinePoll(); }catch(e){}
-  try{ if(onlineSocket){onlineSocket.close(); onlineSocket=null;} }catch(e){}
-  onlineRoomCode=''; onlinePlayerId=''; onlineSeat=-1; onlineRoomData=null;
+  // FIX BOT: khởi tạo ván trước, tuyệt đối không để lỗi avatar/online chặn việc hiện bài.
   gameMode='bot';
-  $('lobby').style.display='none';
-  $('game').style.display='block';
-  renderMyAvatar();
-  selected.clear(); last=null; passes=0; passedPlayers.clear(); roundWinner=-1; turn=0; gameOn=false;
+  try{ if(typeof stopOnlinePoll==='function') stopOnlinePoll(); }catch(e){}
+  try{ if(typeof onlineSocket!=='undefined' && onlineSocket){onlineSocket.close();onlineSocket=null;} }catch(e){}
+  try{ onlineRoomCode=''; onlinePlayerId=''; onlineSeat=-1; onlineRoomData=null; }catch(e){}
+
+  const lobby=$('lobby'), game=$('game'), turnEl=$('turn'), deal=$('deal'), handEl=$('hand');
+  if(lobby) lobby.style.display='none';
+  if(game) game.style.display='block';
+
+  // Luôn tạo một bộ bài mới 52 lá, chia 13 lá/người.
   hands=[[],[],[],[]];
-  $('hand').innerHTML='';
-
-  // Chia đủ 52 lá, mỗi người đúng 13 lá, không trùng.
+  selected=new Set(); last=null; passes=0; roundWinner=-1; turn=0; gameOn=true;
+  if(typeof passedPlayers!=='undefined') passedPlayers=new Set();
   const d=deck();
-  for(let i=0;i<d.length;i++) hands[i%4].push({...d[i]});
+  for(let i=0;i<52;i++) hands[i%4].push({...d[i]});
 
-  // Kết thúc trạng thái chia bài ngay sau khi dữ liệu đã có.
-  gameOn=true;
-  turn=0;
-  selected.clear();
-  $('deal').style.display='none';
-  $('deal').style.visibility='hidden';
-  $('dealText').textContent='';
-  $('turn').textContent='Lượt của bạn';
-  for(let i=0;i<4;i++) $('c'+i).textContent=hands[i].length+' lá';
-  renderHand();
-  renderOtherHands();
-  render();
-  $('deal').style.display='none';
-  $('deal').style.visibility='hidden';
-  $('turn').textContent='Lượt của bạn';
-  startTurnTimer();
+  // Cập nhật số lá ngay cả khi một hàm render phụ gặp lỗi.
+  for(let i=0;i<4;i++){
+    const c=$('c'+i); if(c)c.textContent=hands[i].length+' lá';
+  }
+
+  // Tắt hoàn toàn trạng thái chia bài.
+  if(deal){deal.style.display='none';deal.style.visibility='hidden';deal.setAttribute('aria-hidden','true');}
+  const dealText=$('dealText'); if(dealText)dealText.textContent='';
+  if(turnEl)turnEl.textContent='Lượt của bạn';
+
+  // Render từng phần độc lập: lỗi một phần không được làm kẹt cả ván.
+  try{renderHand();}catch(e){console.error('renderHand:',e)}
+  try{renderOtherHands();}catch(e){console.error('renderOtherHands:',e)}
+  try{render();}catch(e){console.error('render:',e)}
+  try{renderMyAvatar();}catch(e){console.error('renderMyAvatar:',e)}
+
+  // Ép trạng thái cuối sau mọi render để không thể quay lại "Đang chia bài...".
+  if(deal){deal.style.display='none';deal.style.visibility='hidden';}
+  if(turnEl)turnEl.textContent='Lượt của bạn';
+  if(handEl && !handEl.children.length) try{renderHand();}catch(e){}
+  try{startTurnTimer();}catch(e){}
+
+  // Một lần xác nhận sau khi trình duyệt hoàn tất layout.
+  setTimeout(()=>{
+    const d=$('deal'), t=$('turn');
+    if(d){d.style.display='none';d.style.visibility='hidden';}
+    if(t && gameOn) t.textContent=turn===0?'Lượt của bạn':`Lượt Bot ${turn}`;
+  },50);
 }
+
 function cardHTML(c){return '<div class="cardface '+c.color+'"><div class="rank">'+c.rank+'</div><div class="suit">'+c.suit+'</div></div>'}
 function renderOtherHands(){
   for(let p=1;p<4;p++){
@@ -1191,7 +1205,7 @@ function render(){
 }
 function renderHand(){
   let el=$('hand');
-  $('playBtn').style.display=selected.size?'block':'none';
+  $('playBtn').style.display=(gameOn&&turn===0)?'block':'none';
   el.innerHTML='';
   const handSeat=(gameMode==='online'&&onlineRoomData&&gameOn&&onlineSeat>=0)?onlineSeat:0;
   let n=(hands[handSeat]||[]).length;
@@ -1222,6 +1236,8 @@ function renderHand(){
     d.style.transform=`translateX(calc(-50% + ${x}px)) rotate(${angle}deg)`;
     d.style.zIndex=i;
     d.onclick=()=>{
+      // Chỉ cho chọn bài khi đúng lượt của người chơi.
+      if(!gameOn || turn!==0)return;
       if(selected.has(i)) selected.delete(i);
       else selected.add(i);
       renderHand();
@@ -1283,7 +1299,23 @@ function canBeat(cards,prev){
   }
   return a.v>p.v;
 }
-function playSelected(){if(!gameOn||turn!==0||!selected.size)return;let cards=[...selected].sort((a,b)=>a-b).map(i=>hands[0][i]);if(!canBeat(cards,last)){msg('hint','Bộ bài không hợp lệ hoặc chưa lớn hơn bộ trước.');return}hands[0]=hands[0].filter((_,i)=>!selected.has(i));selected.clear();last={cards,type:typeOf(cards),by:0};passes=0;if(!hands[0].length){roundWinner=0;return endGame('Bạn thắng! 🎉');}turn=1;render();startTurnTimer();setTimeout(botTurn,2000+Math.floor(Math.random()*3001))}
+function playSelected(){
+  if(!gameOn||turn!==0){msg('hint','Chưa đến lượt bạn.');return;}
+  if(!selected.size){msg('hint','Hãy chọn ít nhất 1 lá bài trước.');return;}
+  const cards=[...selected].sort((a,b)=>a-b).map(i=>hands[0][i]).filter(Boolean);
+  if(!cards.length){selected.clear();renderHand();return;}
+  if(!canBeat(cards,last)){msg('hint','Bộ bài không hợp lệ hoặc chưa lớn hơn bộ trước.');return;}
+  hands[0]=hands[0].filter((_,i)=>!selected.has(i));
+  selected.clear();
+  last={cards,type:typeOf(cards),by:0};
+  passes=0;
+  passedPlayers.clear();
+  if(!hands[0].length){roundWinner=0;return endGame('Bạn thắng! 🎉');}
+  turn=1;
+  render();
+  startTurnTimer();
+  setTimeout(botTurn,2000+Math.floor(Math.random()*3001));
+}
 function passTurn(){
   if(!gameOn||turn!==0)return;
   if(!last){
