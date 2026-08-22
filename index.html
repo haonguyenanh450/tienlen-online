@@ -289,9 +289,11 @@ input{width:100%;padding:13px 15px;margin:7px 0;border-radius:12px;border:1px so
 
 <div id="modal" class="modal"><div class="card"><h2 id="modalTitle"></h2><div id="modalBody"></div><button class="btn" onclick="closeModal()">Đóng</button></div></div>
 
+<script src="config.js"></script>
 <script>
 const SUITS=[{s:'♠',r:0},{s:'♣',r:1},{s:'♦',r:2},{s:'♥',r:3}], RANKS=['3','4','5','6','7','8','9','10','J','Q','K','A','2'];
-let user='',hands=[],selected=new Set(),turn=0,gameOn=false,last=null,passes=0,roundWinner=-1,timerSeconds=60,timerInterval=null,passedPlayers=new Set();
+let user='',hands=[],selected=new Set(),turn=0,gameOn=false,last=null,passes=0,roundWinner=-1,timerSeconds=60,timerInterval=null,passedPlayers=new Set(),tablePlays=[];
+let gameMode='lobby'; // 'bot' | 'online' | 'lobby'
 const $=id=>document.getElementById(id);
 
 function previewAvatar(e){
@@ -772,49 +774,131 @@ function exchangeReward(cost,name,link){
     </div>`;
 }
 
-/* ----- friends are stored on the server, not localStorage ----- */
-async function friendRequest(action,name){
-  return api('/friends/'+action,{method:'POST',body:JSON.stringify({from:user,to:name})});
-}
-function friendAvatar(n,avatar){
-  return avatar?safeAvatarHTML(avatar,'friend-avatar'):'<div class="friend-avatar" style="display:grid;place-items:center">👤</div>';
-}
-async function showFriends(){
-  $('lobbyExtra').innerHTML=`
-  <div class="friends-panel">
-    <div class="friends-head"><h3>👥 Bạn bè</h3><span class="small">Đồng bộ giữa mọi thiết bị</span></div>
-    <div class="friend-search"><input id="friendSearch" placeholder="Nhập tên tài khoản để tìm..."><button class="btn" style="width:auto" onclick="sendFriendRequest($('friendSearch').value)">➕ Kết bạn</button></div>
-    <div id="friendMsg" class="friend-msg"></div><div id="friendList" class="friend-list">Đang tải...</div>
-  </div>`;
-  await renderFriends();
-}
-async function sendFriendRequest(n){
-  n=(n||'').trim();
-  if(!n||n===user)return msg('friendMsg','❌ Tên tài khoản không hợp lệ.');
-  try{await friendRequest('request',n);msg('friendMsg','✅ Đã gửi lời mời kết bạn tới '+n+'.');await renderFriends()}
-  catch(e){msg('friendMsg','❌ '+e.message)}
-}
-async function acceptFriend(n){
-  try{await friendRequest('accept',n);await renderFriends();msg('friendMsg','🎉 Đã kết bạn với '+n+'!')}catch(e){msg('friendMsg',e.message)}
-}
-async function declineFriend(n){
-  try{await friendRequest('decline',n);await renderFriends()}catch(e){msg('friendMsg',e.message)}
-}
-async function removeFriend(n){
-  try{await friendRequest('remove',n);await renderFriends()}catch(e){msg('friendMsg',e.message)}
-}
-async function renderFriends(){
-  const list=$('friendList');if(!list)return;
-  try{
-    const d=await api('/friends/list?name='+encodeURIComponent(user));
-    let html='';
-    (d.received||[]).forEach(x=>html+=`<div class="friend-card">${friendAvatar(x.avatar,x.avatar)}<div class="friend-info"><div class="friend-name">${x.name} ${verifiedHTML(x.name)}</div><div class="small">📩 Lời mời kết bạn</div></div><div class="friend-actions"><button class="backbtn" onclick="acceptFriend('${x.name.replace(/'/g,"\\'")}')">Chấp nhận</button><button class="backbtn" onclick="declineFriend('${x.name.replace(/'/g,"\\'")}')">Từ chối</button></div></div>`);
-    html+=(d.friends||[]).map(x=>`<div class="friend-card">${friendAvatar(x.avatar,x.avatar)}<div class="friend-info"><div class="friend-name">${x.name} ${verifiedHTML(x.name)}</div><div class="small">🟢 Bạn bè</div></div><div class="friend-actions"><button class="backbtn" onclick="removeFriend('${x.name.replace(/'/g,"\\'")}')">Xóa bạn</button></div></div>`).join('');
-    if(!html)html='<div class="friend-empty">Chưa có bạn bè hoặc lời mời.</div>';
-    list.innerHTML=html;
-  }catch(e){list.innerHTML='<div class="friend-empty">Không tải được danh sách bạn bè.</div>'}
-}
 
+function getFriendData(){
+  return JSON.parse(localStorage.getItem('tl_friends')||'{}');
+}
+function saveFriendData(data){
+  localStorage.setItem('tl_friends',JSON.stringify(data));
+}
+function getAllRegisteredUsers(){
+  return JSON.parse(localStorage.getItem('tl_users')||'{}');
+}
+function friendAvatar(n){
+  const a=localStorage.getItem('tl_avatar_'+n);
+  return a ? `<img class="friend-avatar" src="${a}" alt="Avatar">`
+           : '<div class="friend-avatar" style="display:grid;place-items:center">👤</div>';
+}
+function getRelation(a,b){
+  const d=getFriendData();
+  if(d[a]&&d[a].friends&&d[a].friends.includes(b))return 'friend';
+  if(d[a]&&d[a].sent&&d[a].sent.includes(b))return 'sent';
+  if(d[a]&&d[a].received&&d[a].received.includes(b))return 'received';
+  return 'none';
+}
+function ensureFriendUser(n){
+  const d=getFriendData();
+  d[n]=d[n]||{friends:[],sent:[],received:[]};
+  saveFriendData(d);
+  return d;
+}
+function sendFriendRequest(n){
+  n=n.trim();
+  if(!n || n===user)return msg('friendMsg','❌ Tên tài khoản không hợp lệ.');
+  const users=getAllRegisteredUsers();
+  if(!users[n])return msg('friendMsg','❌ Không tìm thấy tài khoản này.');
+  let d=ensureFriendUser(user);
+  d=ensureFriendUser(n);
+  if(getRelation(user,n)==='friend')return msg('friendMsg','✅ Hai bạn đã là bạn bè.');
+  if(d[user].sent.includes(n))return msg('friendMsg','⏳ Đã gửi lời mời cho người này.');
+  if(d[user].received.includes(n)){
+    acceptFriend(n); return;
+  }
+  d[user].sent.push(n);
+  d[n].received.push(user);
+  saveFriendData(d);
+  renderFriends();
+  msg('friendMsg','✅ Đã gửi lời mời kết bạn tới '+n+'.');
+}
+function acceptFriend(n){
+  let d=ensureFriendUser(user);
+  d=ensureFriendUser(n);
+  d[user].received=(d[user].received||[]).filter(x=>x!==n);
+  d[n].sent=(d[n].sent||[]).filter(x=>x!==user);
+  if(!d[user].friends.includes(n))d[user].friends.push(n);
+  if(!d[n].friends.includes(user))d[n].friends.push(user);
+  saveFriendData(d);
+  renderFriends();
+  msg('friendMsg','🎉 Đã kết bạn với '+n+'!');
+}
+function declineFriend(n){
+  let d=ensureFriendUser(user);
+  d=ensureFriendUser(n);
+  d[user].received=(d[user].received||[]).filter(x=>x!==n);
+  d[n].sent=(d[n].sent||[]).filter(x=>x!==user);
+  saveFriendData(d);
+  renderFriends();
+}
+function removeFriend(n){
+  let d=ensureFriendUser(user);
+  d=ensureFriendUser(n);
+  d[user].friends=(d[user].friends||[]).filter(x=>x!==n);
+  d[n].friends=(d[n].friends||[]).filter(x=>x!==user);
+  saveFriendData(d);
+  renderFriends();
+}
+function friendCard(n,relation){
+  const badge=n==='Hao123'
+    ? '<span class="verified-badge">✓</span>'
+    : '';
+  const role=n==='Hao123' ? 'Dev' : 'Người chơi';
+  let action='';
+  if(relation==='friend') action='<button class="backbtn" onclick="removeFriend(\''+n+'\')">Xóa bạn</button>';
+  else if(relation==='received') action='<button class="backbtn" onclick="acceptFriend(\''+n+'\')">Chấp nhận</button><button class="backbtn" onclick="declineFriend(\''+n+'\')">Từ chối</button>';
+  else if(relation==='sent') action='<span class="small">Đã gửi</span>';
+  else action='<button class="backbtn" onclick="sendFriendRequest(\''+n+'\')">Kết bạn</button>';
+  return `<div class="friend-card">${friendAvatar(n)}<div class="friend-info"><div class="friend-name">${n} ${badge}</div><div class="small">${relation==='friend'?'Bạn bè':relation==='received'?'Lời mời kết bạn':relation==='sent'?'Đang chờ xác nhận':role}</div></div><div class="friend-actions">${action}</div></div>`;
+}
+function renderFriends(filter=''){
+  const d=ensureFriendUser(user)[user];
+  const users=getAllRegisteredUsers();
+  const list=$('friendList');
+  if(!list)return;
+  const q=filter.trim().toLowerCase();
+  let html='';
+  const pending=d.received||[];
+  if(pending.length){
+    html+='<div class="small" style="margin:3px 0">📩 Lời mời kết bạn</div>';
+    pending.forEach(n=>{if(!q||n.toLowerCase().includes(q))html+=friendCard(n,'received')});
+  }
+  const friends=d.friends||[];
+  if(friends.length){
+    html+='<div class="small" style="margin:10px 0 3px">👥 Bạn bè của tôi</div>';
+    friends.forEach(n=>{if(!q||n.toLowerCase().includes(q))html+=friendCard(n,'friend')});
+  }
+  const others=Object.keys(users).filter(n=>n!==user && !friends.includes(n) && !pending.includes(n));
+  if(others.length){
+    html+='<div class="small" style="margin:10px 0 3px">🔎 Người chơi khác</div>';
+    others.forEach(n=>{if(!q||n.toLowerCase().includes(q))html+=friendCard(n,getRelation(user,n))});
+  }
+  list.innerHTML=html||'<div class="friend-empty">Chưa có người chơi phù hợp.</div>';
+}
+function showFriends(){
+  $('lobbyExtra').innerHTML=`
+    <div class="friends-panel">
+      <div class="friends-head">
+        <h3>👥 Bạn bè</h3>
+        <span class="small">Kết bạn với những người chơi khác</span>
+      </div>
+      <div class="friend-search">
+        <input id="friendSearch" placeholder="Nhập tên tài khoản để tìm..." oninput="renderFriends(this.value)">
+        <button class="btn" onclick="sendFriendRequest($('friendSearch').value)">➕ Kết bạn</button>
+      </div>
+      <div id="friendMsg" class="friend-msg"></div>
+      <div id="friendList" class="friend-list"></div>
+    </div>`;
+  renderFriends();
+}
 
 const LUCKY_REWARDS=[10,40,60,100,200,500,1000,2000];
 const LUCKY_COLORS=['#6f7882','#4b8bd8','#35a56b','#a77bda','#e3a52b','#e56b45','#d94f73','#f2c94c'];
@@ -897,6 +981,725 @@ function spinLuckyWheel(){
     luckySpinning=false;
     if(btn)btn.disabled=false;
   },5300);
+}
+
+function showOnline(){
+  $('lobbyExtra').innerHTML=`
+    <div class="online-panel">
+      <h3>🌐 Chơi Online</h3>
+      <button class="btn" onclick="createOnlineRoom()">Tạo phòng</button>
+      <div style="height:8px"></div>
+      <div class="dlc-row">
+        <input id="joinCode" placeholder="Nhập mã phòng">
+        <button class="btn" style="width:auto;margin:0" onclick="joinOnlineRoom()">Vào phòng</button>
+      </div>
+      <div id="onlineMsg" class="msg"></div>
+    </div>`;
+}
+function createOnlineRoom(){
+  let code=Math.random().toString(36).slice(2,8).toUpperCase();
+  localStorage.setItem('tl_online_room_'+code,JSON.stringify({host:user,players:[user]}));
+  $('lobbyExtra').querySelector('.online-panel').insertAdjacentHTML(
+    'beforeend',
+    '<div class="online-code">'+code+'</div><div class="status-online">Đã tạo phòng. Gửi mã này cho người chơi khác.</div>'
+  );
+}
+function joinOnlineRoom(){
+  let code=($('joinCode')?.value||'').trim().toUpperCase();
+  if(!code)return msg('onlineMsg','Nhập mã phòng.');
+  let raw=localStorage.getItem('tl_online_room_'+code);
+  if(!raw)return msg('onlineMsg','Không tìm thấy phòng.');
+  let room=JSON.parse(raw);
+  if(!room.players.includes(user))room.players.push(user);
+  localStorage.setItem('tl_online_room_'+code,JSON.stringify(room));
+  msg('onlineMsg','Đã vào phòng của '+room.host+'.');
+}
+
+function openRoom(){let code=Math.random().toString(36).slice(2,8).toUpperCase();$('modalTitle').textContent='🌐 Phòng online';$('modalBody').innerHTML='<div class="sub">Mã phòng của bạn</div><div class="roomcode">'+code+'</div><div class="sub">Đây là giao diện phòng demo. Muốn nhiều máy chơi thật cần server/WebSocket.</div>';$('modal').style.display='flex'}
+function closeModal(){$('modal').style.display='none'}
+function shuffle(a){for(let i=a.length-1;i;i--){let j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a}
+function deck(){
+  let d=[];
+  for(let r=0;r<13;r++){
+    for(let s of SUITS){
+      d.push({
+        id:(r*4+s.r),
+        rank:RANKS[r],
+        suit:s.s,
+        color:s.r>=2?'red':''
+      });
+    }
+  }
+  return shuffle(d);
+}
+function startBot(){
+  // FIX BOT: khởi tạo ván trước, tuyệt đối không để lỗi avatar/online chặn việc hiện bài.
+  gameMode='bot';
+  try{ if(typeof stopOnlinePoll==='function') stopOnlinePoll(); }catch(e){}
+  try{ if(typeof onlineSocket!=='undefined' && onlineSocket){onlineSocket.close();onlineSocket=null;} }catch(e){}
+  try{ onlineRoomCode=''; onlinePlayerId=''; onlineSeat=-1; onlineRoomData=null; }catch(e){}
+
+  const lobby=$('lobby'), game=$('game'), turnEl=$('turn'), deal=$('deal'), handEl=$('hand');
+  if(lobby) lobby.style.display='none';
+  if(game) game.style.display='block';
+
+  // Luôn tạo một bộ bài mới 52 lá, chia 13 lá/người.
+  hands=[[],[],[],[]];
+  selected=new Set(); last=null; tablePlays=[]; passes=0; roundWinner=-1; turn=0; gameOn=true;
+  if(typeof passedPlayers!=='undefined') passedPlayers=new Set();
+  const d=deck();
+  for(let i=0;i<52;i++) hands[i%4].push({...d[i]});
+
+  // Cập nhật số lá ngay cả khi một hàm render phụ gặp lỗi.
+  for(let i=0;i<4;i++){
+    const c=$('c'+i); if(c)c.textContent=hands[i].length+' lá';
+  }
+
+  // Tắt hoàn toàn trạng thái chia bài.
+  if(deal){deal.style.display='none';deal.style.visibility='hidden';deal.setAttribute('aria-hidden','true');}
+  const dealText=$('dealText'); if(dealText)dealText.textContent='';
+  if(turnEl)turnEl.textContent='Lượt của bạn';
+
+  // Render từng phần độc lập: lỗi một phần không được làm kẹt cả ván.
+  try{renderHand();}catch(e){console.error('renderHand:',e)}
+  try{renderOtherHands();}catch(e){console.error('renderOtherHands:',e)}
+  try{render();}catch(e){console.error('render:',e)}
+  try{renderMyAvatar();}catch(e){console.error('renderMyAvatar:',e)}
+
+  // Ép trạng thái cuối sau mọi render để không thể quay lại "Đang chia bài...".
+  if(deal){deal.style.display='none';deal.style.visibility='hidden';}
+  if(turnEl)turnEl.textContent='Lượt của bạn';
+  if(handEl && !handEl.children.length) try{renderHand();}catch(e){}
+  try{startTurnTimer();}catch(e){}
+
+  // Một lần xác nhận sau khi trình duyệt hoàn tất layout.
+  setTimeout(()=>{
+    const d=$('deal'), t=$('turn');
+    if(d){d.style.display='none';d.style.visibility='hidden';}
+    if(t && gameOn) t.textContent=turn===0?'Lượt của bạn':`Lượt Bot ${turn}`;
+  },50);
+}
+
+function cardHTML(c){return '<div class="cardface '+c.color+'"><div class="rank">'+c.rank+'</div><div class="suit">'+c.suit+'</div></div>'}
+function renderOtherHands(){
+  for(let p=1;p<4;p++){
+    let el=$('h'+p);
+    if(!el)continue;
+    let count=hands[p].length;
+    el.innerHTML='';
+
+    // Các lá được xếp sát/chồng lên nhau để không che tên hoặc bàn.
+    let cards=document.createElement('div');
+    cards.style.display='flex';
+    cards.style.justifyContent='center';
+    cards.style.alignItems='center';
+    cards.style.width='100%';
+    cards.style.height='36px';
+
+    for(let i=0;i<count;i++){
+      let d=document.createElement('span');
+      d.className='cardback';
+      d.title='Còn '+count+' lá';
+      cards.appendChild(d);
+    }
+
+    let countEl=document.createElement('div');
+    countEl.style.fontSize='11px';
+    countEl.style.color='#b8d8cf';
+    countEl.style.fontWeight='700';
+    countEl.textContent=count+' lá';
+
+    el.appendChild(cards);
+    el.appendChild(countEl);
+  }
+}
+function stopTurnTimer(){
+  if(timerInterval){clearInterval(timerInterval);timerInterval=null;}
+}
+function startTurnTimer(){
+  stopTurnTimer();
+  timerSeconds=60;
+  updateTurnTimers();
+  timerInterval=setInterval(()=>{
+    if(!gameOn)return;
+    timerSeconds--;
+    updateTurnTimers();
+    if(timerSeconds<=0){
+      stopTurnTimer();
+      autoPassOnTimeout();
+    }
+  },1000);
+}
+function updateTurnTimers(){
+  for(let p=0;p<4;p++){
+    let el=$('timer'+p);
+    if(!el)continue;
+    let value=(p===turn&&gameOn)?timerSeconds:'60';
+
+    if(p===0){
+      el.textContent=value;
+      el.classList.toggle('active',p===turn&&gameOn);
+      el.classList.toggle('low',p===turn&&gameOn&&timerSeconds<=10);
+    }else{
+      let span=el.querySelector('span');
+      if(span)span.textContent=value;
+      el.classList.toggle('active',p===turn&&gameOn);
+      el.classList.toggle('low',p===turn&&gameOn&&timerSeconds<=10);
+    }
+  }
+}
+function autoPassOnTimeout(){
+  if(!gameOn)return;
+  // Hết 60 giây được tính như bỏ lượt.
+  if(turn===0){
+    if(!last){
+      // Nếu đang là người mở đầu mà hết giờ, tự bỏ và chuyển Bot.
+      passes++;
+      passedPlayers.add(0);
+      turn=1;
+      render();
+      setTimeout(botTurn,2000+Math.floor(Math.random()*3001));
+      return;
+    }
+    passes++;
+    if(passes>=3){
+      turn=last.by;
+      last=null;
+      passes=0;
+    }else{
+      turn=1;
+    }
+    render();
+    if(turn!==0)setTimeout(botTurn,2000+Math.floor(Math.random()*3001));
+  }
+}
+function render(){
+  renderMyAvatar();
+  renderHand();
+  renderOtherHands();
+  for(let i=0;i<4;i++)$('c'+i).textContent=hands[i].length+' lá';
+  $('turn').textContent=turn===0?'Lượt của bạn':`Lượt Bot ${turn}`;
+
+  const pile=(gameMode==='bot'?tablePlays:(last?[{cards:last.cards,by:last.by}]:[]));
+  $('played').innerHTML=pile.map((play,pi)=>play.cards.map((c,i)=>
+    '<div class=\"played-card\" style=\"z-index:'+(pi*10+i+1)+'\" title=\"'+(play.by===0?'Bạn':'Bot '+play.by)+'\">'+
+    cardHTML(c).replace('class=\"cardface','class=\"cardface play-anim\"')+
+    '</div>'
+  ).join('')).join('');
+
+  for(let p=0;p<4;p++){
+    let player=document.querySelector('.p'+p);
+    if(!player)continue;
+    let old=player.querySelector('.pass-indicator');
+    if(old)old.remove();
+    if(passedPlayers.has(p)){
+      let pass=document.createElement('div');
+      pass.className='pass-indicator';
+      pass.textContent='Bỏ lượt';
+      player.appendChild(pass);
+    }
+  }
+}
+function renderHand(){
+  let el=$('hand');
+  $('playBtn').style.display=(gameOn&&turn===0)?'block':'none'; $('playBtn').disabled=false;
+  el.innerHTML='';
+  const handSeat=(gameMode==='online'&&onlineRoomData&&gameOn&&onlineSeat>=0)?onlineSeat:0;
+  let n=(hands[handSeat]||[]).length;
+  if(!n)return;
+
+  // Khoảng cách vừa đủ để nhìn rõ mặt từng lá nhưng vẫn giống một tay bài ngoài đời.
+  const mobile=window.innerWidth<=650;
+  const cardW=mobile?54:66;
+  const cardH=mobile?80:96;
+  const visible=mobile?27:34;
+  const spread=Math.min(visible, (mobile?300:410)/(Math.max(1,n-1)));
+  const total=spread*(n-1);
+  const maxAngle=mobile?20:23;
+
+  for(let i=0;i<n;i++){
+    const c=hands[handSeat][i];
+    const x=-total/2+i*spread;
+    const middle=(n-1)/2;
+    const normalized=middle?((i-middle)/middle):0;
+    const angle=normalized*maxAngle;
+
+    let d=document.createElement('div');
+    d.className='cardface '+c.color+(selected.has(i)?' selected':'');
+    d.innerHTML='<div class="rank">'+c.rank+'</div><div class="suit">'+c.suit+'</div>';
+    d.style.left='50%';
+    d.style.width=cardW+'px';
+    d.style.height=cardH+'px';
+    d.style.transform=`translateX(calc(-50% + ${x}px)) rotate(${angle}deg)`;
+    d.style.zIndex=i;
+    d.onclick=()=>{
+      if(!gameOn || turn!==0)return;
+      if(selected.has(i)) selected.delete(i);
+      else selected.add(i);
+      renderHand();
+    };
+    el.appendChild(d);
+  }
+}
+function sortCards(a){
+  // Thứ tự chất: Bích < Tép < Dô < Cơ
+  return a.slice().sort((x,y)=>
+    RANKS.indexOf(x.rank)-RANKS.indexOf(y.rank) ||
+    SUITS.find(s=>s.s===x.suit).r-SUITS.find(s=>s.s===y.suit).r
+  );
+}
+function typeOf(cards){
+  if(!cards.length)return null;
+  let a=sortCards(cards), ranks=a.map(c=>RANKS.indexOf(c.rank));
+  let same=ranks.every(x=>x===ranks[0]);
+  if(a.length===1)return {t:'single',v:ranks[0]};
+  if(a.length===2&&same)return {t:'pair',v:ranks[0]};
+  if(a.length===3&&same)return {t:'triple',v:ranks[0]};
+  if(a.length===4&&same)return {t:'quad',v:ranks[0]};
+
+  // Đôi thông: từ 2 đôi trở lên, các đôi liên tiếp.
+  if(a.length>=4&&a.length%2===0){
+    let pairs=[];
+    for(let i=0;i<a.length;i+=2){
+      let r=RANKS.indexOf(a[i].rank);
+      if(RANKS.indexOf(a[i+1].rank)!==r)return null;
+      pairs.push(r);
+    }
+    if(pairs.every((v,i)=>i===0||v===pairs[i-1]+1))
+      return {t:'pairstraight',v:pairs[pairs.length-1],len:pairs.length};
+  }
+
+  if(a.length>=3&&new Set(ranks).size===a.length&&ranks.every((v,i)=>i===0||v===ranks[i-1]+1))
+    return {t:'straight',v:ranks[ranks.length-1],len:a.length};
+  return null;
+}
+function canBeat(cards,prev){
+  let a=typeOf(cards);
+  if(!a)return false;
+  if(!prev)return true;
+  let p=prev.type || (prev.cards ? typeOf(prev.cards) : prev);
+  if(!p)return false;
+
+  // Tứ chặt 2; đôi thông từ 3 đôi có thể chặt 2.
+  if(a.t==='quad' && p.t==='single' && p.v===12)return true;
+  if(a.t==='pairstraight' && p.t==='single' && p.v===12 && a.len>=3)return true;
+
+  if(a.t!==p.t)return false;
+  if(a.t==='straight' && a.len!==p.len)return false;
+  if(a.t==='pairstraight' && a.len!==p.len)return false;
+
+  if(a.t==='single' && a.v===p.v){
+    let newSuit=SUITS.find(s=>s.s===cards[0].suit)?.r ?? -1;
+    let prevSuit=SUITS.find(s=>s.s===prev.cards[0].suit)?.r ?? -1;
+    return newSuit>prevSuit;
+  }
+  return a.v>p.v;
+}
+function playSelected(){
+  if(gameMode==='bot'){
+    if(!gameOn){msg('hint','Ván chưa bắt đầu.');return;}
+    if(turn!==0){msg('hint','Chưa tới lượt bạn.');return;}
+    const indexes=[...selected].filter(i=>Number.isInteger(i)&&i>=0&&i<hands[0].length).sort((a,b)=>a-b);
+    if(!indexes.length){msg('hint','Hãy chọn ít nhất 1 lá bài.');return;}
+    const cards=indexes.map(i=>hands[0][i]);
+    if(!canBeat(cards,last)){msg('hint',last?'Bộ bài không hợp lệ hoặc chưa lớn hơn bộ trước.':'Bộ bài bạn chọn không hợp lệ.');return;}
+    indexes.slice().reverse().forEach(i=>hands[0].splice(i,1));
+    selected.clear();
+    last={cards:cards.slice(),type:typeOf(cards),by:0};
+    tablePlays.push({cards:cards.slice(),by:0});
+    passes=0;passedPlayers.clear();
+    render();
+    if(!hands[0].length){roundWinner=0;endGame('Bạn thắng! 🎉');return;}
+    turn=1;
+    render();
+    startTurnTimer();
+    setTimeout(botTurn,2000+Math.floor(Math.random()*3001));
+    return;
+  }
+  if(gameMode!=='online'||!gameOn||turn!==onlineSeat){return;}
+  const ids=[...selected].sort((a,b)=>a-b).map(i=>hands[onlineSeat][i].id);
+  try{const r=await api('/room/play',{method:'POST',body:JSON.stringify({code:onlineRoomCode,playerId:onlinePlayerId,cardIds:ids})});selected.clear();onlineRoomData=r;startNetworkGame(r)}catch(e){msg('hint',e.message)}
+}
+function passTurn(){
+  if(!gameOn||turn!==0)return;
+  if(!last){
+    msg('hint','Bạn phải đánh ở lượt mở đầu.');
+    return;
+  }
+
+  passes++;
+  passedPlayers.add(0);
+  turn=1;
+
+  // Nếu bạn là người thứ ba bỏ lượt sau lá vừa đánh,
+  // người đã đánh lá đó được đánh tiếp.
+  if(passes>=3){
+    turn=last.by;
+    last=null;
+    passes=0;
+    render();
+    if(turn!==0)setTimeout(botTurn,2000+Math.floor(Math.random()*3001));
+    return;
+  }
+
+  render();
+  startTurnTimer();
+  setTimeout(botTurn,2000+Math.floor(Math.random()*3001));
+}
+function botTurn(){
+  if(!gameOn||gameMode!=='bot'||turn===0)return;
+  startTurnTimer();
+  const seat=turn;
+  const h=hands[seat]||[];
+  const choice=findBotMove(h,last);
+  if(choice.length){
+    for(const c of choice){const idx=h.indexOf(c);if(idx!==-1)h.splice(idx,1);}
+    last={cards:choice.slice(),type:typeOf(choice),by:seat};
+    tablePlays.push({cards:choice.slice(),by:seat});
+    passes=0;passedPlayers.clear();
+    if(!h.length){roundWinner=seat;render();endGame('Bot '+seat+' thắng! 🤖');return;}
+  }else{
+    passes++;passedPlayers.add(seat);
+  }
+  turn=(seat+1)%4;
+  if(passes>=3&&last){
+    turn=last.by;last=null;passes=0;passedPlayers.clear();tablePlays=[];
+  }
+  render();
+  if(turn!==0)setTimeout(botTurn,2000+Math.floor(Math.random()*3001));
+}
+function findBotMove(h,prev){
+  let s=sortCards(h);
+  if(!prev)return [s[0]];
+
+  let need=prev.type||typeOf(prev.cards);
+  if(!need)return [];
+
+  if(need.t==='single'){
+    for(let c of s) if(canBeat([c],prev))return [c];
+
+    // Nếu là 2 thì tìm tứ hoặc đôi thông đủ 3 đôi để chặt.
+    if(need.v===12){
+      for(let r=0;r<13;r++){
+        let x=s.filter(c=>RANKS.indexOf(c.rank)===r);
+        if(x.length>=4)return x.slice(0,4);
+      }
+      for(let start=0;start<11;start++){
+        let x=[];
+        for(let r=start;r<13;r++){
+          let pair=s.filter(c=>RANKS.indexOf(c.rank)===r);
+          if(pair.length<2)break;
+          x.push(pair[0],pair[1]);
+          if(x.length>=6)return x.slice(0,6);
+        }
+      }
+    }
+    return [];
+  }
+
+  if(need.t==='pair'){
+    for(let r=0;r<13;r++){
+      let x=s.filter(c=>RANKS.indexOf(c.rank)===r);
+      if(x.length>=2&&canBeat(x.slice(0,2),prev))return x.slice(0,2);
+    }
+    return [];
+  }
+
+  if(need.t==='triple'){
+    for(let r=0;r<13;r++){
+      let x=s.filter(c=>RANKS.indexOf(c.rank)===r);
+      if(x.length>=3&&canBeat(x.slice(0,3),prev))return x.slice(0,3);
+    }
+    return [];
+  }
+
+  if(need.t==='quad'){
+    for(let r=0;r<13;r++){
+      let x=s.filter(c=>RANKS.indexOf(c.rank)===r);
+      if(x.length>=4&&canBeat(x.slice(0,4),prev))return x.slice(0,4);
+    }
+    return [];
+  }
+
+  if(need.t==='pairstraight'){
+    for(let start=0;start<13;start++){
+      let x=[];
+      for(let r=start;r<13;r++){
+        let pair=s.filter(c=>RANKS.indexOf(c.rank)===r);
+        if(pair.length<2)break;
+        x.push(pair[0],pair[1]);
+        if(x.length===need.len*2&&canBeat(x,prev))return x;
+      }
+    }
+    return [];
+  }
+
+  if(need.t==='straight'){
+    for(let i=0;i<s.length;i++){
+      let x=[s[i]];
+      for(let j=i+1;j<s.length&&x.length<need.len;j++){
+        if(RANKS.indexOf(s[j].rank)===RANKS.indexOf(x[x.length-1].rank)+1)x.push(s[j]);
+      }
+      if(x.length===need.len&&canBeat(x,prev))return x;
+    }
+  }
+  return [];
+}
+function endGame(t){
+  stopTurnTimer();
+  gameOn=false;
+  $('turn').textContent=t;
+  $('played').innerHTML='';
+
+  let isUserWin=(roundWinner===0);
+  if(isUserWin){
+    addCoins(100);
+    $('modalTitle').textContent='🏆 WIN!';
+    $('modalBody').innerHTML=
+      '<div style="text-align:center;padding:8px 0 14px">'+
+      '<div style="font-size:56px">🎉</div>'+
+      '<div style="font-size:24px;font-weight:900;color:#5ff0b5">Bạn đã thắng!</div>'+
+      '<div style="margin-top:10px;color:#ffd45b;font-size:20px;font-weight:900">+100 🪙 xu</div>'+
+      '<div style="margin-top:8px;color:#a9c9c0">Số dư: '+getCoins()+' xu</div>'+
+      '</div>'+
+      '<button class="btn" onclick="closeWinAndLobby()">Về sảnh</button>';
+  }else{
+    $('modalTitle').textContent='🤖 KẾT THÚC VÁN';
+    $('modalBody').innerHTML=
+      '<div style="text-align:center;padding:8px 0 14px">'+
+      '<div style="font-size:48px">🤖</div>'+
+      '<div style="font-size:22px;font-weight:900">'+t+'</div>'+
+      '<div style="margin-top:8px;color:#a9c9c0">Bạn có '+getCoins()+' xu</div>'+
+      '</div>'+
+      '<button class="btn" onclick="closeWinAndLobby()">Về sảnh</button>';
+  }
+  $('modal').style.display='flex';
+}
+function closeWinAndLobby(){
+  closeModal();
+  backLobby();
+}
+function backLobby(){
+  stopTurnTimer();
+  stopOnlinePoll?.();
+  onlineRoomCode=''; onlinePlayerId=''; onlineSeat=-1; onlineRoomData=null;
+  gameMode='lobby';
+  $('game').style.display='none';$('lobby').style.display='block';gameOn=false;
+  // Trả giao diện về đúng tên Bot mặc định khi rời ván online.
+  for(let p=1;p<4;p++){
+    const el=document.querySelector('.p'+p);
+    if(!el)continue;
+    const badge=el.querySelector('.online-name-badge'); if(badge)badge.remove();
+    const av=el.querySelector('.avatar'); if(av)av.innerHTML='🤖';
+    const textNodes=[...el.childNodes].filter(n=>n.nodeType===3);
+    if(textNodes.length)textNodes[textNodes.length-1].textContent='Bot '+p;
+  }
+  if($('lobbyExtra'))$('lobbyExtra').innerHTML='';
+}
+window.addEventListener('load',()=>{
+  let n=localStorage.getItem('tl_session');
+  if(n) enter(n);
+  else {
+    $('auth').style.display='flex';
+    $('app').style.display='none';
+  }
+})
+</script>
+
+<style>
+.online-panel .room-head{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.online-panel .players{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin:14px 0}
+.online-panel .slot{padding:12px;border:1px solid #315c50;border-radius:10px;background:#102f28;text-align:left;min-height:46px}
+.online-panel .slot.ready{border-color:#20b879}
+.online-panel .players .verified-badge{margin-left:3px}
+</style>
+
+<script>
+/* ===== ONLINE/CROSS-DEVICE V2 =====
+   Backend: EdgeOne Makers Functions + KV + Blob.
+   Set API_BASE to your same-domain /api endpoint.
+*/
+const API_BASE=(window.TL_API_BASE||'/api').replace(/\/$/,'');
+let serverProfile=null;
+let apiToken='';
+let onlineSeat=-1;
+let onlinePollTimer=null;
+let onlineRoomData=null;
+
+async function api(path, options={}){
+  const res=await fetch(API_BASE+path,{
+    ...options,
+    headers:{'Content-Type':'application/json',...(options.headers||{})}
+  });
+  let data=null;
+  try{data=await res.json()}catch(e){}
+  if(!res.ok) throw new Error(data?.message||'Máy chủ trả về lỗi '+res.status);
+  return data;
+}
+async function hashText(s){
+  const b=new TextEncoder().encode(s);
+  const d=await crypto.subtle.digest('SHA-256',b);
+  return [...new Uint8Array(d)].map(x=>x.toString(16).padStart(2,'0')).join('');
+}
+function safeAvatarHTML(url, cls){
+  if(!url)return '<div class="'+cls+'" style="display:grid;place-items:center">👤</div>';
+  return '<img class="'+cls+'" src="'+String(url).replace(/"/g,'&quot;')+'" alt="Avatar">';
+}
+function verifiedHTML(n){
+  return n==='Hao123'?'<span class="verified-badge" title="Đã xác minh">✓</span>':'';
+}
+function applyServerProfile(profile){
+  serverProfile=profile;
+  user=profile.name;
+  if(profile.avatar) localStorage.setItem('tl_avatar_'+user,profile.avatar);
+  localStorage.setItem('tl_session',user);
+  renderCoins();
+  renderLobbyAvatar();
+  renderMyAvatar();
+}
+function renderLobbyAvatar(){
+  if(!user||!$('who'))return;
+  const a=serverProfile?.avatar||localStorage.getItem('tl_avatar_'+user);
+  $('who').innerHTML=(a
+    ? '<img class="header-avatar" src="'+a.replace(/"/g,'&quot;')+'" alt="Avatar">'
+    : '<span class="header-avatar fallback-avatar">👤</span>')+
+    '<span>'+user+'</span>'+verifiedHTML(user);
+}
+function renderMyAvatar(){
+  const el=document.querySelector('.p0 .avatar'); if(!el)return;
+  const a=serverProfile?.avatar||localStorage.getItem('tl_avatar_'+user);
+  el.innerHTML=a?'<img src="'+a.replace(/"/g,'&quot;')+'" alt="Avatar" style="width:100%;height:100%;object-fit:cover;border-radius:50%;display:block;">':'🙂';
+}
+function getCoins(){return Number(serverProfile?.coins??localStorage.getItem('tl_coins_'+user)??0)}
+function setCoins(v){
+  v=Math.max(0,Math.floor(Number(v)||0));
+  if(serverProfile)serverProfile.coins=v;
+  localStorage.setItem('tl_coins_'+user,String(v));
+  renderCoins();
+}
+async function syncProfile(){
+  if(!user)return;
+  try{
+    const p=await api('/auth/profile?name='+encodeURIComponent(user));
+    applyServerProfile(p);
+  }catch(e){}
+}
+function renderCoins(){
+  if($('coins'))$('coins').textContent='🪙 '+getCoins()+' xu';
+  if($('coinBalance'))$('coinBalance').textContent='🪙 '+getCoins()+' xu';
+  if($('luckyBalance'))$('luckyBalance').textContent='Số dư: 🪙 '+getCoins()+' xu';
+}
+async function addCoins(v){
+  try{
+    const p=await api('/auth/coins',{
+      method:'POST',body:JSON.stringify({name:user,delta:Number(v)})
+    });
+    applyServerProfile(p);
+  }catch(e){
+    setCoins(getCoins()+Number(v));
+  }
+}
+async function uploadAvatarToServer(dataUrl){
+  if(!user||!dataUrl)return;
+  try{
+    const p=await api('/auth/avatar',{method:'POST',body:JSON.stringify({name:user,avatar:dataUrl})});
+    applyServerProfile(p);
+  }catch(e){msg('authMsg',e.message)}
+}
+function previewAvatar(e){
+  const file=e.target.files&&e.target.files[0]; if(!file)return;
+  if(!file.type.startsWith('image/'))return msg('authMsg','Vui lòng chọn một file ảnh.');
+  if(file.size>700000)return msg('authMsg','Ảnh avatar tối đa 700 KB.');
+  const reader=new FileReader();
+  reader.onload=async()=>{
+    $('avatarPreview').src=reader.result;
+    if(user)await uploadAvatarToServer(reader.result);
+  };
+  reader.readAsDataURL(file);
+}
+async function register(){
+  const n=$('name').value.trim(),p=$('pass').value;
+  if(n.length<4)return msg('authMsg','Tên tài khoản phải có ít nhất 4 ký tự.');
+  if(p.length<4)return msg('authMsg','Mật khẩu phải có ít nhất 4 ký tự.');
+  try{
+    const avatar=$('avatarPreview')?.src?.startsWith('data:image/')?$('avatarPreview').src:'';
+    const r=await api('/auth/register',{method:'POST',body:JSON.stringify({name:n,password:p,avatar})});
+    applyServerProfile(r.profile);
+    enter(n);
+  }catch(e){msg('authMsg',e.message)}
+}
+async function login(){
+  const n=$('name').value.trim(),p=$('pass').value;
+  if(n.length<4)return msg('authMsg','Tên tài khoản phải có ít nhất 4 ký tự.');
+  if(p.length<4)return msg('authMsg','Mật khẩu phải có ít nhất 4 ký tự.');
+  try{
+    const r=await api('/auth/login',{method:'POST',body:JSON.stringify({name:n,password:p})});
+    applyServerProfile(r.profile);
+    enter(n);
+  }catch(e){msg('authMsg',e.message)}
+}
+async function enter(n){
+  user=n;
+  $('auth').style.display='none';$('app').style.display='block';
+  try{
+    const p=await api('/auth/profile?name='+encodeURIComponent(n));
+    applyServerProfile(p);
+  }catch(e){}
+  renderLobbyAvatar();loadAvatarForUser(n);renderMyAvatar();renderCoins();
+}
+async function logout(){
+  stopOnlinePoll();
+  if(onlineRoomCode&&onlinePlayerId){
+    try{await api('/room/leave',{method:'POST',body:JSON.stringify({code:onlineRoomCode,playerId:onlinePlayerId})})}catch(e){}
+  }
+  onlineRoomCode='';onlinePlayerId='';onlineSeat=-1;onlineRoomData=null;
+  localStorage.removeItem('tl_session');
+  gameOn=false;$('app').style.display='none';$('auth').style.display='flex';
+  $('name').value='';$('pass').value='';clearAvatarPreview();$('authMsg').textContent='';
+  $('lobby').style.display='block';$('game').style.display='none';
+}
+
+/* ----- friends are stored on the server, not localStorage ----- */
+async function friendRequest(action,name){
+  return api('/friends/'+action,{method:'POST',body:JSON.stringify({from:user,to:name})});
+}
+function friendAvatar(n,avatar){
+  return avatar?safeAvatarHTML(avatar,'friend-avatar'):'<div class="friend-avatar" style="display:grid;place-items:center">👤</div>';
+}
+async function showFriends(){
+  $('lobbyExtra').innerHTML=`
+  <div class="friends-panel">
+    <div class="friends-head"><h3>👥 Bạn bè</h3><span class="small">Đồng bộ giữa mọi thiết bị</span></div>
+    <div class="friend-search"><input id="friendSearch" placeholder="Nhập tên tài khoản để tìm..."><button class="btn" style="width:auto" onclick="sendFriendRequest($('friendSearch').value)">➕ Kết bạn</button></div>
+    <div id="friendMsg" class="friend-msg"></div><div id="friendList" class="friend-list">Đang tải...</div>
+  </div>`;
+  await renderFriends();
+}
+async function sendFriendRequest(n){
+  n=(n||'').trim();
+  if(!n||n===user)return msg('friendMsg','❌ Tên tài khoản không hợp lệ.');
+  try{await friendRequest('request',n);msg('friendMsg','✅ Đã gửi lời mời kết bạn tới '+n+'.');await renderFriends()}
+  catch(e){msg('friendMsg','❌ '+e.message)}
+}
+async function acceptFriend(n){
+  try{await friendRequest('accept',n);await renderFriends();msg('friendMsg','🎉 Đã kết bạn với '+n+'!')}catch(e){msg('friendMsg',e.message)}
+}
+async function declineFriend(n){
+  try{await friendRequest('decline',n);await renderFriends()}catch(e){msg('friendMsg',e.message)}
+}
+async function removeFriend(n){
+  try{await friendRequest('remove',n);await renderFriends()}catch(e){msg('friendMsg',e.message)}
+}
+async function renderFriends(){
+  const list=$('friendList');if(!list)return;
+  try{
+    const d=await api('/friends/list?name='+encodeURIComponent(user));
+    let html='';
+    (d.received||[]).forEach(x=>html+=`<div class="friend-card">${friendAvatar(x.avatar,x.avatar)}<div class="friend-info"><div class="friend-name">${x.name} ${verifiedHTML(x.name)}</div><div class="small">📩 Lời mời kết bạn</div></div><div class="friend-actions"><button class="backbtn" onclick="acceptFriend('${x.name.replace(/'/g,"\\'")}')">Chấp nhận</button><button class="backbtn" onclick="declineFriend('${x.name.replace(/'/g,"\\'")}')">Từ chối</button></div></div>`);
+    html+=(d.friends||[]).map(x=>`<div class="friend-card">${friendAvatar(x.avatar,x.avatar)}<div class="friend-info"><div class="friend-name">${x.name} ${verifiedHTML(x.name)}</div><div class="small">🟢 Bạn bè</div></div><div class="friend-actions"><button class="backbtn" onclick="removeFriend('${x.name.replace(/'/g,"\\'")}')">Xóa bạn</button></div></div>`).join('');
+    if(!html)html='<div class="friend-empty">Chưa có bạn bè hoặc lời mời.</div>';
+    list.innerHTML=html;
+  }catch(e){list.innerHTML='<div class="friend-empty">Không tải được danh sách bạn bè.</div>'}
 }
 
 /* ----- real online room ----- */
@@ -1032,466 +1835,6 @@ function syncNetworkTurn(){
   onlinePollTimer=setInterval(syncNetworkState,700);
   syncNetworkState();
 }
-function startBot(){
-  $('lobby').style.display='none';
-  $('game').style.display='block';
-  renderMyAvatar();
-  $('deal').style.display='flex';
-  hands=[[],[],[],[]];
-  selected.clear();
-  last=null;
-  passes=0;
-  passedPlayers.clear();
-  turn=0;
-  roundWinner=-1;
-  gameOn=false;
-
-  // Mỗi lá trong bộ 52 lá có một ID duy nhất, sau khi chia
-  // mỗi lá chỉ thuộc đúng một người.
-  let d=deck();
-  let used=new Set();
-
-  function deal(){
-    if(i>=52){
-      let all=hands.flat();
-      let ids=all.map(c=>c.id);
-      let unique=new Set(ids);
-      let validCounts=hands.every(h=>h.length===13);
-      if(unique.size!==52 || all.length!==52 || !validCounts){
-        console.error('Lỗi chia bài: có lá bị trùng.');
-        $('dealText').textContent='Lỗi chia bài, đang chia lại...';
-        setTimeout(startBot,500);
-        return;
-      }
-
-      $('deal').style.display='none';
-      gameOn=true;
-      render();
-      startTurnTimer();
-      return;
-    }
-
-    let card=d[i];
-    if(!card || used.has(card.id)){
-      console.error('Lá bị trùng khi chia:',card);
-      $('dealText').textContent='Lỗi chia bài, đang chia lại...';
-      setTimeout(startBot,500);
-      return;
-    }
-    used.add(card.id);
-
-    let p=i%4;
-    // Tạo object mới để tuyệt đối không dùng chung reference giữa các tay bài.
-    hands[p].push({...card});
-    i++;
-    $('dealText').textContent='Đang chia bài '+i+'/52';
-    setTimeout(deal,55);
-  }
-
-  let i=0;
-  deal();
-}
-function cardHTML(c){return '<div class="cardface '+c.color+'"><div class="rank">'+c.rank+'</div><div class="suit">'+c.suit+'</div></div>'}
-function renderOtherHands(){
-  for(let p=1;p<4;p++){
-    let el=$('h'+p);
-    if(!el)continue;
-    let count=hands[p].length;
-    el.innerHTML='';
-
-    // Các lá được xếp sát/chồng lên nhau để không che tên hoặc bàn.
-    let cards=document.createElement('div');
-    cards.style.display='flex';
-    cards.style.justifyContent='center';
-    cards.style.alignItems='center';
-    cards.style.width='100%';
-    cards.style.height='36px';
-
-    for(let i=0;i<count;i++){
-      let d=document.createElement('span');
-      d.className='cardback';
-      d.title='Còn '+count+' lá';
-      cards.appendChild(d);
-    }
-
-    let countEl=document.createElement('div');
-    countEl.style.fontSize='11px';
-    countEl.style.color='#b8d8cf';
-    countEl.style.fontWeight='700';
-    countEl.textContent=count+' lá';
-
-    el.appendChild(cards);
-    el.appendChild(countEl);
-  }
-}
-function stopTurnTimer(){
-  if(timerInterval){clearInterval(timerInterval);timerInterval=null;}
-}
-function startTurnTimer(){
-  stopTurnTimer();
-  timerSeconds=60;
-  updateTurnTimers();
-  timerInterval=setInterval(()=>{
-    if(!gameOn)return;
-    timerSeconds--;
-    updateTurnTimers();
-    if(timerSeconds<=0){
-      stopTurnTimer();
-      autoPassOnTimeout();
-    }
-  },1000);
-}
-function updateTurnTimers(){
-  for(let p=0;p<4;p++){
-    let el=$('timer'+p);
-    if(!el)continue;
-    let value=(p===turn&&gameOn)?timerSeconds:'60';
-
-    if(p===0){
-      el.textContent=value;
-      el.classList.toggle('active',p===turn&&gameOn);
-      el.classList.toggle('low',p===turn&&gameOn&&timerSeconds<=10);
-    }else{
-      let span=el.querySelector('span');
-      if(span)span.textContent=value;
-      el.classList.toggle('active',p===turn&&gameOn);
-      el.classList.toggle('low',p===turn&&gameOn&&timerSeconds<=10);
-    }
-  }
-}
-function autoPassOnTimeout(){
-  if(!gameOn)return;
-  // Hết 60 giây được tính như bỏ lượt.
-  if(turn===0){
-    if(!last){
-      // Nếu đang là người mở đầu mà hết giờ, tự bỏ và chuyển Bot.
-      passes++;
-      passedPlayers.add(0);
-      turn=1;
-      render();
-      setTimeout(botTurn,2000+Math.floor(Math.random()*3001));
-      return;
-    }
-    passes++;
-    if(passes>=3){
-      turn=last.by;
-      last=null;
-      passes=0;
-    }else{
-      turn=1;
-    }
-    render();
-    if(turn!==0)setTimeout(botTurn,2000+Math.floor(Math.random()*3001));
-  }
-}
-function render(){
-  renderMyAvatar();
-  renderHand();
-  renderOtherHands();
-  for(let i=0;i<4;i++)$('c'+i).textContent=hands[i].length+' lá';
-  $('turn').textContent=turn===0?'Lượt của bạn':`Lượt Bot ${turn}`;
-
-  if(last){
-    $('played').innerHTML=last.cards.map((c,i)=>
-      '<div class="played-card" style="z-index:'+(i+1)+'">'+
-      cardHTML(c).replace('class="cardface','class="cardface play-anim')+
-      '</div>'
-    ).join('');
-  }else{
-    $('played').innerHTML='';
-  }
-
-  for(let p=0;p<4;p++){
-    let player=document.querySelector('.p'+p);
-    if(!player)continue;
-    let old=player.querySelector('.pass-indicator');
-    if(old)old.remove();
-    if(passedPlayers.has(p)){
-      let pass=document.createElement('div');
-      pass.className='pass-indicator';
-      pass.textContent='Bỏ lượt';
-      player.appendChild(pass);
-    }
-  }
-}
-function renderHand(){
-  let el=$('hand');
-  $('playBtn').style.display=selected.size?'block':'none';
-  el.innerHTML='';
-  let n=hands[0].length;
-  if(!n)return;
-
-  // Khoảng cách vừa đủ để nhìn rõ mặt từng lá nhưng vẫn giống một tay bài ngoài đời.
-  const mobile=window.innerWidth<=650;
-  const cardW=mobile?54:66;
-  const cardH=mobile?80:96;
-  const visible=mobile?27:34;
-  const spread=Math.min(visible, (mobile?300:410)/(Math.max(1,n-1)));
-  const total=spread*(n-1);
-  const maxAngle=mobile?20:23;
-
-  for(let i=0;i<n;i++){
-    const c=hands[0][i];
-    const x=-total/2+i*spread;
-    const middle=(n-1)/2;
-    const normalized=middle?((i-middle)/middle):0;
-    const angle=normalized*maxAngle;
-
-    let d=document.createElement('div');
-    d.className='cardface '+c.color+(selected.has(i)?' selected':'');
-    d.innerHTML='<div class="rank">'+c.rank+'</div><div class="suit">'+c.suit+'</div>';
-    d.style.left='50%';
-    d.style.width=cardW+'px';
-    d.style.height=cardH+'px';
-    d.style.transform=`translateX(calc(-50% + ${x}px)) rotate(${angle}deg)`;
-    d.style.zIndex=i;
-    d.onclick=()=>{
-      if(selected.has(i)) selected.delete(i);
-      else selected.add(i);
-      renderHand();
-    };
-    el.appendChild(d);
-  }
-}
-function sortCards(a){
-  // Thứ tự chất: Bích < Tép < Dô < Cơ
-  return a.slice().sort((x,y)=>
-    RANKS.indexOf(x.rank)-RANKS.indexOf(y.rank) ||
-    SUITS.find(s=>s.s===x.suit).r-SUITS.find(s=>s.s===y.suit).r
-  );
-}
-function typeOf(cards){
-  if(!cards.length)return null;
-  let a=sortCards(cards), ranks=a.map(c=>RANKS.indexOf(c.rank));
-  let same=ranks.every(x=>x===ranks[0]);
-  if(a.length===1)return {t:'single',v:ranks[0]};
-  if(a.length===2&&same)return {t:'pair',v:ranks[0]};
-  if(a.length===3&&same)return {t:'triple',v:ranks[0]};
-  if(a.length===4&&same)return {t:'quad',v:ranks[0]};
-
-  // Đôi thông: từ 2 đôi trở lên, các đôi liên tiếp.
-  if(a.length>=4&&a.length%2===0){
-    let pairs=[];
-    for(let i=0;i<a.length;i+=2){
-      let r=RANKS.indexOf(a[i].rank);
-      if(RANKS.indexOf(a[i+1].rank)!==r)return null;
-      pairs.push(r);
-    }
-    if(pairs.every((v,i)=>i===0||v===pairs[i-1]+1))
-      return {t:'pairstraight',v:pairs[pairs.length-1],len:pairs.length};
-  }
-
-  if(a.length>=3&&new Set(ranks).size===a.length&&ranks.every((v,i)=>i===0||v===ranks[i-1]+1))
-    return {t:'straight',v:ranks[ranks.length-1],len:a.length};
-  return null;
-}
-function canBeat(cards,prev){
-  let a=typeOf(cards);
-  if(!a)return false;
-  if(!prev)return true;
-  let p=prev.type || (prev.cards ? typeOf(prev.cards) : prev);
-  if(!p)return false;
-
-  // Tứ chặt 2; đôi thông từ 3 đôi có thể chặt 2.
-  if(a.t==='quad' && p.t==='single' && p.v===12)return true;
-  if(a.t==='pairstraight' && p.t==='single' && p.v===12 && a.len>=3)return true;
-
-  if(a.t!==p.t)return false;
-  if(a.t==='straight' && a.len!==p.len)return false;
-  if(a.t==='pairstraight' && a.len!==p.len)return false;
-
-  if(a.t==='single' && a.v===p.v){
-    let newSuit=SUITS.find(s=>s.s===cards[0].suit)?.r ?? -1;
-    let prevSuit=SUITS.find(s=>s.s===prev.cards[0].suit)?.r ?? -1;
-    return newSuit>prevSuit;
-  }
-  return a.v>p.v;
-}
-function playSelected(){if(!gameOn||turn!==0||!selected.size)return;let cards=[...selected].sort((a,b)=>a-b).map(i=>hands[0][i]);if(!canBeat(cards,last)){msg('hint','Bộ bài không hợp lệ hoặc chưa lớn hơn bộ trước.');return}hands[0]=hands[0].filter((_,i)=>!selected.has(i));selected.clear();last={cards,type:typeOf(cards),by:0};passes=0;if(!hands[0].length){roundWinner=0;return endGame('Bạn thắng! 🎉');}turn=1;render();startTurnTimer();setTimeout(botTurn,2000+Math.floor(Math.random()*3001))}
-function passTurn(){
-  if(!gameOn||turn!==0)return;
-  if(!last){
-    msg('hint','Bạn phải đánh ở lượt mở đầu.');
-    return;
-  }
-
-  passes++;
-  passedPlayers.add(0);
-  turn=1;
-
-  // Nếu bạn là người thứ ba bỏ lượt sau lá vừa đánh,
-  // người đã đánh lá đó được đánh tiếp.
-  if(passes>=3){
-    turn=last.by;
-    last=null;
-    passes=0;
-    render();
-    if(turn!==0)setTimeout(botTurn,2000+Math.floor(Math.random()*3001));
-    return;
-  }
-
-  render();
-  startTurnTimer();
-  setTimeout(botTurn,2000+Math.floor(Math.random()*3001));
-}
-function botTurn(){
-  if(!gameOn)return;
-  startTurnTimer();
-
-  let h=hands[turn];
-  let choice=findBotMove(h,last);
-
-  if(choice.length){
-    // Bot đánh được thì đánh.
-    for(let c of choice){
-      let idx=h.indexOf(c);
-      if(idx!==-1)h.splice(idx,1);
-    }
-    last={cards:choice,type:typeOf(choice),by:turn};
-    passes=0;
-
-    if(!h.length){roundWinner=turn;return endGame('Bot '+turn+' thắng! 🤖');}
-  }else{
-    // Bot không đè được bài trước thì bỏ lượt.
-    passes++;
-    passedPlayers.add(turn);
-  }
-
-  turn=(turn+1)%4;
-
-  // Cả 3 người còn lại đều bỏ lượt -> vòng mới, người vừa đánh cuối được mở.
-  if(passes>=3&&last){
-    // Ba người còn lại đều bỏ lượt: người vừa đánh được mở lượt mới.
-    turn=last.by;
-    last=null;
-    passes=0;
-    passedPlayers.clear();
-  }
-
-  render();
-
-  if(turn!==0)setTimeout(botTurn,2000+Math.floor(Math.random()*3001));
-}
-function findBotMove(h,prev){
-  let s=sortCards(h);
-  if(!prev)return [s[0]];
-
-  let need=prev.type||typeOf(prev.cards);
-  if(!need)return [];
-
-  if(need.t==='single'){
-    for(let c of s) if(canBeat([c],prev))return [c];
-
-    // Nếu là 2 thì tìm tứ hoặc đôi thông đủ 3 đôi để chặt.
-    if(need.v===12){
-      for(let r=0;r<13;r++){
-        let x=s.filter(c=>RANKS.indexOf(c.rank)===r);
-        if(x.length>=4)return x.slice(0,4);
-      }
-      for(let start=0;start<11;start++){
-        let x=[];
-        for(let r=start;r<13;r++){
-          let pair=s.filter(c=>RANKS.indexOf(c.rank)===r);
-          if(pair.length<2)break;
-          x.push(pair[0],pair[1]);
-          if(x.length>=6)return x.slice(0,6);
-        }
-      }
-    }
-    return [];
-  }
-
-  if(need.t==='pair'){
-    for(let r=0;r<13;r++){
-      let x=s.filter(c=>RANKS.indexOf(c.rank)===r);
-      if(x.length>=2&&canBeat(x.slice(0,2),prev))return x.slice(0,2);
-    }
-    return [];
-  }
-
-  if(need.t==='triple'){
-    for(let r=0;r<13;r++){
-      let x=s.filter(c=>RANKS.indexOf(c.rank)===r);
-      if(x.length>=3&&canBeat(x.slice(0,3),prev))return x.slice(0,3);
-    }
-    return [];
-  }
-
-  if(need.t==='quad'){
-    for(let r=0;r<13;r++){
-      let x=s.filter(c=>RANKS.indexOf(c.rank)===r);
-      if(x.length>=4&&canBeat(x.slice(0,4),prev))return x.slice(0,4);
-    }
-    return [];
-  }
-
-  if(need.t==='pairstraight'){
-    for(let start=0;start<13;start++){
-      let x=[];
-      for(let r=start;r<13;r++){
-        let pair=s.filter(c=>RANKS.indexOf(c.rank)===r);
-        if(pair.length<2)break;
-        x.push(pair[0],pair[1]);
-        if(x.length===need.len*2&&canBeat(x,prev))return x;
-      }
-    }
-    return [];
-  }
-
-  if(need.t==='straight'){
-    for(let i=0;i<s.length;i++){
-      let x=[s[i]];
-      for(let j=i+1;j<s.length&&x.length<need.len;j++){
-        if(RANKS.indexOf(s[j].rank)===RANKS.indexOf(x[x.length-1].rank)+1)x.push(s[j]);
-      }
-      if(x.length===need.len&&canBeat(x,prev))return x;
-    }
-  }
-  return [];
-}
-function endGame(t){
-  stopTurnTimer();
-  gameOn=false;
-  $('turn').textContent=t;
-  $('played').innerHTML='';
-
-  let isUserWin=(roundWinner===0);
-  if(isUserWin){
-    addCoins(100);
-    $('modalTitle').textContent='🏆 WIN!';
-    $('modalBody').innerHTML=
-      '<div style="text-align:center;padding:8px 0 14px">'+
-      '<div style="font-size:56px">🎉</div>'+
-      '<div style="font-size:24px;font-weight:900;color:#5ff0b5">Bạn đã thắng!</div>'+
-      '<div style="margin-top:10px;color:#ffd45b;font-size:20px;font-weight:900">+100 🪙 xu</div>'+
-      '<div style="margin-top:8px;color:#a9c9c0">Số dư: '+getCoins()+' xu</div>'+
-      '</div>'+
-      '<button class="btn" onclick="closeWinAndLobby()">Về sảnh</button>';
-  }else{
-    $('modalTitle').textContent='🤖 KẾT THÚC VÁN';
-    $('modalBody').innerHTML=
-      '<div style="text-align:center;padding:8px 0 14px">'+
-      '<div style="font-size:48px">🤖</div>'+
-      '<div style="font-size:22px;font-weight:900">'+t+'</div>'+
-      '<div style="margin-top:8px;color:#a9c9c0">Bạn có '+getCoins()+' xu</div>'+
-      '</div>'+
-      '<button class="btn" onclick="closeWinAndLobby()">Về sảnh</button>';
-  }
-  $('modal').style.display='flex';
-}
-function closeWinAndLobby(){
-  closeModal();
-  backLobby();
-}
-function backLobby(){stopTurnTimer();$('game').style.display='none';$('lobby').style.display='block';gameOn=false;if($('lobbyExtra'))$('lobbyExtra').innerHTML=''}
-window.addEventListener('load',()=>{
-  let n=localStorage.getItem('tl_session');
-  if(n) enter(n);
-  else {
-    $('auth').style.display='flex';
-    $('app').style.display='none';
-  }
-})
 </script>
 
 <script>
