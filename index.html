@@ -293,6 +293,7 @@ input{width:100%;padding:13px 15px;margin:7px 0;border-radius:12px;border:1px so
 <script>
 const SUITS=[{s:'♠',r:0},{s:'♣',r:1},{s:'♦',r:2},{s:'♥',r:3}], RANKS=['3','4','5','6','7','8','9','10','J','Q','K','A','2'];
 let user='',hands=[],selected=new Set(),turn=0,gameOn=false,last=null,passes=0,roundWinner=-1,timerSeconds=60,timerInterval=null,passedPlayers=new Set();
+let gameMode='lobby'; // 'bot' | 'online' | 'lobby'
 const $=id=>document.getElementById(id);
 
 function previewAvatar(e){
@@ -1032,66 +1033,38 @@ function deck(){
   return shuffle(d);
 }
 function startBot(){
-  // Chuyển hẳn về chế độ Bot: xóa toàn bộ trạng thái online còn sót lại.
+  // Chế độ Bot là một ván hoàn toàn độc lập với Online.
   stopOnlinePoll?.();
+  if(onlineSocket){try{onlineSocket.close()}catch(e){} onlineSocket=null}
   onlineRoomCode=''; onlinePlayerId=''; onlineSeat=-1; onlineRoomData=null;
+  gameMode='bot';
   $('lobby').style.display='none';
   $('game').style.display='block';
   renderMyAvatar();
-  $('deal').style.display='flex';
+  selected.clear(); last=null; passes=0; passedPlayers.clear(); roundWinner=-1; turn=0; gameOn=false;
   hands=[[],[],[],[]];
-  selected.clear();
-  last=null;
-  passes=0;
-  passedPlayers.clear();
-  turn=0;
-  roundWinner=-1;
-  gameOn=false;
+  $('hand').innerHTML='';
+  $('deal').style.display='flex';
+  $('dealText').textContent='Đang chia bài...';
 
-  // Mỗi lá trong bộ 52 lá có một ID duy nhất, sau khi chia
-  // mỗi lá chỉ thuộc đúng một người.
-  let d=deck();
-  let used=new Set();
+  // Chia đúng 52 lá, mỗi ghế đúng 13 lá. Không dùng chung object lá bài.
+  const d=deck();
+  for(let i=0;i<d.length;i++) hands[i%4].push({...d[i]});
 
-  function deal(){
-    if(i>=52){
-      let all=hands.flat();
-      let ids=all.map(c=>c.id);
-      let unique=new Set(ids);
-      let validCounts=hands.every(h=>h.length===13);
-      if(unique.size!==52 || all.length!==52 || !validCounts){
-        console.error('Lỗi chia bài: có lá bị trùng.');
-        $('dealText').textContent='Lỗi chia bài, đang chia lại...';
-        setTimeout(startBot,500);
-        return;
-      }
-
+  // Hiệu ứng chia bài ngắn, sau đó chắc chắn chuyển sang trạng thái chơi.
+  let shown=0;
+  const dealTimer=setInterval(()=>{
+    shown++;
+    $('dealText').textContent='Đang chia bài '+Math.min(shown,52)+'/52';
+    if(shown>=52){
+      clearInterval(dealTimer);
       $('deal').style.display='none';
       gameOn=true;
+      selected.clear();
       render();
       startTurnTimer();
-      return;
     }
-
-    let card=d[i];
-    if(!card || used.has(card.id)){
-      console.error('Lá bị trùng khi chia:',card);
-      $('dealText').textContent='Lỗi chia bài, đang chia lại...';
-      setTimeout(startBot,500);
-      return;
-    }
-    used.add(card.id);
-
-    let p=i%4;
-    // Tạo object mới để tuyệt đối không dùng chung reference giữa các tay bài.
-    hands[p].push({...card});
-    i++;
-    $('dealText').textContent='Đang chia bài '+i+'/52';
-    setTimeout(deal,55);
-  }
-
-  let i=0;
-  deal();
+  },18);
 }
 function cardHTML(c){return '<div class="cardface '+c.color+'"><div class="rank">'+c.rank+'</div><div class="suit">'+c.suit+'</div></div>'}
 function renderOtherHands(){
@@ -1220,7 +1193,7 @@ function renderHand(){
   let el=$('hand');
   $('playBtn').style.display=selected.size?'block':'none';
   el.innerHTML='';
-  const handSeat=(onlineRoomData&&gameOn&&onlineSeat>=0)?onlineSeat:0;
+  const handSeat=(gameMode==='online'&&onlineRoomData&&gameOn&&onlineSeat>=0)?onlineSeat:0;
   let n=(hands[handSeat]||[]).length;
   if(!n)return;
 
@@ -1490,6 +1463,7 @@ function backLobby(){
   stopTurnTimer();
   stopOnlinePoll?.();
   onlineRoomCode=''; onlinePlayerId=''; onlineSeat=-1; onlineRoomData=null;
+  gameMode='lobby';
   $('game').style.display='none';$('lobby').style.display='block';gameOn=false;
   // Trả giao diện về đúng tên Bot mặc định khi rời ván online.
   for(let p=1;p<4;p++){
@@ -1804,6 +1778,7 @@ function renderOnlinePlayers(players){
   }
 }
 function startNetworkGame(room){
+  gameMode='online';
   $('lobby').style.display='none';$('game').style.display='block';
   onlineRoomData=room;
   onlineSeat=room.mySeat;
@@ -1841,7 +1816,19 @@ function syncNetworkTurn(){
   syncNetworkState();
 }
 async function playSelected(){
-  if(!gameOn||turn!==onlineSeat||!selected.size)return;
+  if(gameMode==='bot'){
+    if(!gameOn||turn!==0||!selected.size)return;
+    const cards=[...selected].sort((a,b)=>a-b).map(i=>hands[0][i]);
+    if(!canBeat(cards,last)){msg('hint','Bộ bài không hợp lệ hoặc chưa lớn hơn bộ trước.');return}
+    hands[0]=hands[0].filter((_,i)=>!selected.has(i));
+    selected.clear();
+    last={cards,type:typeOf(cards),by:0};
+    passes=0;
+    if(!hands[0].length){roundWinner=0;return endGame('Bạn thắng! 🎉')}
+    turn=1;render();startTurnTimer();setTimeout(botTurn,2000+Math.floor(Math.random()*3001));
+    return;
+  }
+  if(gameMode!=='online'||!gameOn||turn!==onlineSeat||!selected.size)return;
   const ids=[...selected].sort((a,b)=>a-b).map(i=>hands[onlineSeat][i].id);
   try{
     const r=await api('/room/play',{method:'POST',body:JSON.stringify({code:onlineRoomCode,playerId:onlinePlayerId,cardIds:ids})});
@@ -1849,7 +1836,15 @@ async function playSelected(){
   }catch(e){msg('hint',e.message)}
 }
 async function passTurn(){
-  if(!gameOn||turn!==onlineSeat)return;
+  if(gameMode==='bot'){
+    if(!gameOn||turn!==0)return;
+    if(!last){msg('hint','Bạn phải đánh ở lượt mở đầu.');return}
+    passes++;passedPlayers.add(0);turn=1;
+    if(passes>=3){turn=last.by;last=null;passes=0;passedPlayers.clear()}
+    render();startTurnTimer();if(turn!==0)setTimeout(botTurn,2000+Math.floor(Math.random()*3001));
+    return;
+  }
+  if(gameMode!=='online'||!gameOn||turn!==onlineSeat)return;
   try{
     const r=await api('/room/pass',{method:'POST',body:JSON.stringify({code:onlineRoomCode,playerId:onlinePlayerId})});
     onlineRoomData=r;startNetworkGame(r);
@@ -1860,7 +1855,7 @@ async function passTurn(){
 <script>
 const __oldRenderOtherHands=renderOtherHands;
 function renderOtherHands(){
-  if(onlineRoomData&&gameOn){
+  if(gameMode==='online'&&onlineRoomData&&gameOn){
     const players=Object.values(onlineRoomData.players||{});
     for(let p=1;p<4;p++){
       const el=$('h'+p);if(!el)continue;
@@ -1882,7 +1877,7 @@ function renderOtherHands(){
 const __oldRender=render;
 function render(){
   __oldRender();
-  if(onlineRoomData&&gameOn){
+  if(gameMode==='online'&&onlineRoomData&&gameOn){
     $('turn').textContent=(turn===onlineSeat)?'Lượt của bạn':('Lượt '+((Object.values(onlineRoomData.players||{}).find(x=>x.seat===turn)?.name)||('người chơi '+(turn+1))));
     for(let p=0;p<4;p++){
       const pl=Object.values(onlineRoomData.players||{}).find(x=>x.seat===p);
