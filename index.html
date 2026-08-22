@@ -292,7 +292,7 @@ input{width:100%;padding:13px 15px;margin:7px 0;border-radius:12px;border:1px so
 <script src="config.js"></script>
 <script>
 const SUITS=[{s:'♠',r:0},{s:'♣',r:1},{s:'♦',r:2},{s:'♥',r:3}], RANKS=['3','4','5','6','7','8','9','10','J','Q','K','A','2'];
-let user='',hands=[],selected=new Set(),turn=0,gameOn=false,last=null,passes=0,roundWinner=-1,timerSeconds=60,timerInterval=null,passedPlayers=new Set();
+let user='',hands=[],selected=new Set(),turn=0,gameOn=false,last=null,passes=0,roundWinner=-1,timerSeconds=60,timerInterval=null,passedPlayers=new Set(),tablePlays=[];
 let gameMode='lobby'; // 'bot' | 'online' | 'lobby'
 const $=id=>document.getElementById(id);
 
@@ -1045,7 +1045,7 @@ function startBot(){
 
   // Luôn tạo một bộ bài mới 52 lá, chia 13 lá/người.
   hands=[[],[],[],[]];
-  selected=new Set(); last=null; passes=0; roundWinner=-1; turn=0; gameOn=true;
+  selected=new Set(); last=null; tablePlays=[]; passes=0; roundWinner=-1; turn=0; gameOn=true;
   if(typeof passedPlayers!=='undefined') passedPlayers=new Set();
   const d=deck();
   for(let i=0;i<52;i++) hands[i%4].push({...d[i]});
@@ -1180,15 +1180,12 @@ function render(){
   for(let i=0;i<4;i++)$('c'+i).textContent=hands[i].length+' lá';
   $('turn').textContent=turn===0?'Lượt của bạn':`Lượt Bot ${turn}`;
 
-  if(last){
-    $('played').innerHTML=last.cards.map((c,i)=>
-      '<div class="played-card" style="z-index:'+(i+1)+'">'+
-      cardHTML(c).replace('class="cardface','class="cardface play-anim')+
-      '</div>'
-    ).join('');
-  }else{
-    $('played').innerHTML='';
-  }
+  const pile=(gameMode==='bot'?tablePlays:(last?[{cards:last.cards,by:last.by}]:[]));
+  $('played').innerHTML=pile.map((play,pi)=>play.cards.map((c,i)=>
+    '<div class=\"played-card\" style=\"z-index:'+(pi*10+i+1)+'\" title=\"'+(play.by===0?'Bạn':'Bot '+play.by)+'\">'+
+    cardHTML(c).replace('class=\"cardface','class=\"cardface play-anim\"')+
+    '</div>'
+  ).join('')).join('');
 
   for(let p=0;p<4;p++){
     let player=document.querySelector('.p'+p);
@@ -1299,48 +1296,29 @@ function canBeat(cards,prev){
   return a.v>p.v;
 }
 function playSelected(){
-  if(!gameOn){
-    msg('hint','Ván chưa bắt đầu.');
+  if(gameMode==='bot'){
+    if(!gameOn){msg('hint','Ván chưa bắt đầu.');return;}
+    if(turn!==0){msg('hint','Chưa tới lượt bạn.');return;}
+    const indexes=[...selected].filter(i=>Number.isInteger(i)&&i>=0&&i<hands[0].length).sort((a,b)=>a-b);
+    if(!indexes.length){msg('hint','Hãy chọn ít nhất 1 lá bài.');return;}
+    const cards=indexes.map(i=>hands[0][i]);
+    if(!canBeat(cards,last)){msg('hint',last?'Bộ bài không hợp lệ hoặc chưa lớn hơn bộ trước.':'Bộ bài bạn chọn không hợp lệ.');return;}
+    indexes.slice().reverse().forEach(i=>hands[0].splice(i,1));
+    selected.clear();
+    last={cards:cards.slice(),type:typeOf(cards),by:0};
+    tablePlays.push({cards:cards.slice(),by:0});
+    passes=0;passedPlayers.clear();
+    render();
+    if(!hands[0].length){roundWinner=0;endGame('Bạn thắng! 🎉');return;}
+    turn=1;
+    render();
+    startTurnTimer();
+    setTimeout(botTurn,2000+Math.floor(Math.random()*3001));
     return;
   }
-  if(turn!==0){
-    msg('hint','Chưa tới lượt bạn.');
-    return;
-  }
-
-  const hand=hands[0]||[];
-  const indexes=[...selected].filter(i=>Number.isInteger(i)&&i>=0&&i<hand.length).sort((a,b)=>a-b);
-  if(!indexes.length){
-    msg('hint','Hãy chọn ít nhất 1 lá bài.');
-    return;
-  }
-
-  const cards=indexes.map(i=>hand[i]);
-  const valid=canBeat(cards,last);
-  if(!valid){
-    msg('hint',last?'Bộ bài không hợp lệ hoặc chưa lớn hơn bộ trước.':'Bộ bài bạn chọn không hợp lệ.');
-    return;
-  }
-
-  // Xóa đúng các lá đã chọn theo index từ phải sang trái.
-  for(let j=indexes.length-1;j>=0;j--) hand.splice(indexes[j],1);
-
-  selected.clear();
-  last={cards:cards.slice(),type:typeOf(cards),by:0};
-  passes=0;
-  passedPlayers=new Set();
-
-  render();
-
-  if(!hand.length){
-    roundWinner=0;
-    return endGame('Bạn thắng! 🎉');
-  }
-
-  turn=1;
-  render();
-  startTurnTimer();
-  setTimeout(botTurn,2000+Math.floor(Math.random()*3001));
+  if(gameMode!=='online'||!gameOn||turn!==onlineSeat){return;}
+  const ids=[...selected].sort((a,b)=>a-b).map(i=>hands[onlineSeat][i].id);
+  try{const r=await api('/room/play',{method:'POST',body:JSON.stringify({code:onlineRoomCode,playerId:onlinePlayerId,cardIds:ids})});selected.clear();onlineRoomData=r;startNetworkGame(r)}catch(e){msg('hint',e.message)}
 }
 function passTurn(){
   if(!gameOn||turn!==0)return;
@@ -1369,41 +1347,25 @@ function passTurn(){
   setTimeout(botTurn,2000+Math.floor(Math.random()*3001));
 }
 function botTurn(){
-  if(!gameOn)return;
+  if(!gameOn||gameMode!=='bot'||turn===0)return;
   startTurnTimer();
-
-  let h=hands[turn];
-  let choice=findBotMove(h,last);
-
+  const seat=turn;
+  const h=hands[seat]||[];
+  const choice=findBotMove(h,last);
   if(choice.length){
-    // Bot đánh được thì đánh.
-    for(let c of choice){
-      let idx=h.indexOf(c);
-      if(idx!==-1)h.splice(idx,1);
-    }
-    last={cards:choice,type:typeOf(choice),by:turn};
-    passes=0;
-
-    if(!h.length){roundWinner=turn;return endGame('Bot '+turn+' thắng! 🤖');}
+    for(const c of choice){const idx=h.indexOf(c);if(idx!==-1)h.splice(idx,1);}
+    last={cards:choice.slice(),type:typeOf(choice),by:seat};
+    tablePlays.push({cards:choice.slice(),by:seat});
+    passes=0;passedPlayers.clear();
+    if(!h.length){roundWinner=seat;render();endGame('Bot '+seat+' thắng! 🤖');return;}
   }else{
-    // Bot không đè được bài trước thì bỏ lượt.
-    passes++;
-    passedPlayers.add(turn);
+    passes++;passedPlayers.add(seat);
   }
-
-  turn=(turn+1)%4;
-
-  // Cả 3 người còn lại đều bỏ lượt -> vòng mới, người vừa đánh cuối được mở.
+  turn=(seat+1)%4;
   if(passes>=3&&last){
-    // Ba người còn lại đều bỏ lượt: người vừa đánh được mở lượt mới.
-    turn=last.by;
-    last=null;
-    passes=0;
-    passedPlayers.clear();
+    turn=last.by;last=null;passes=0;passedPlayers.clear();tablePlays=[];
   }
-
   render();
-
   if(turn!==0)setTimeout(botTurn,2000+Math.floor(Math.random()*3001));
 }
 function findBotMove(h,prev){
@@ -1872,41 +1834,6 @@ function syncNetworkTurn(){
   stopOnlinePoll();
   onlinePollTimer=setInterval(syncNetworkState,700);
   syncNetworkState();
-}
-async function playSelected(){
-  if(gameMode==='bot'){
-    if(!gameOn||turn!==0||!selected.size)return;
-    const cards=[...selected].sort((a,b)=>a-b).map(i=>hands[0][i]);
-    if(!canBeat(cards,last)){msg('hint','Bộ bài không hợp lệ hoặc chưa lớn hơn bộ trước.');return}
-    hands[0]=hands[0].filter((_,i)=>!selected.has(i));
-    selected.clear();
-    last={cards,type:typeOf(cards),by:0};
-    passes=0;
-    if(!hands[0].length){roundWinner=0;return endGame('Bạn thắng! 🎉')}
-    turn=1;render();startTurnTimer();setTimeout(botTurn,2000+Math.floor(Math.random()*3001));
-    return;
-  }
-  if(gameMode!=='online'||!gameOn||turn!==onlineSeat||!selected.size)return;
-  const ids=[...selected].sort((a,b)=>a-b).map(i=>hands[onlineSeat][i].id);
-  try{
-    const r=await api('/room/play',{method:'POST',body:JSON.stringify({code:onlineRoomCode,playerId:onlinePlayerId,cardIds:ids})});
-    selected.clear();onlineRoomData=r;startNetworkGame(r);
-  }catch(e){msg('hint',e.message)}
-}
-async function passTurn(){
-  if(gameMode==='bot'){
-    if(!gameOn||turn!==0)return;
-    if(!last){msg('hint','Bạn phải đánh ở lượt mở đầu.');return}
-    passes++;passedPlayers.add(0);turn=1;
-    if(passes>=3){turn=last.by;last=null;passes=0;passedPlayers.clear()}
-    render();startTurnTimer();if(turn!==0)setTimeout(botTurn,2000+Math.floor(Math.random()*3001));
-    return;
-  }
-  if(gameMode!=='online'||!gameOn||turn!==onlineSeat)return;
-  try{
-    const r=await api('/room/pass',{method:'POST',body:JSON.stringify({code:onlineRoomCode,playerId:onlinePlayerId})});
-    onlineRoomData=r;startNetworkGame(r);
-  }catch(e){msg('hint',e.message)}
 }
 </script>
 
