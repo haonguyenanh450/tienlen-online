@@ -1529,10 +1529,6 @@ function verifiedHTML(n){
   return n==='Hao123'?'<span class="verified-badge" title="Đã xác minh">✓</span>':'';
 }
 function applyServerProfile(profile){
-  profile = profile?.profile || profile;
-  if(!profile || !profile.name){
-    throw new Error('Máy chủ không trả về thông tin tài khoản hợp lệ.');
-  }
   serverProfile=profile;
   user=profile.name;
   if(profile.avatar) localStorage.setItem('tl_avatar_'+user,profile.avatar);
