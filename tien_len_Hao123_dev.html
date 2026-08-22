@@ -1,0 +1,1500 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Tiến Lên 4 Người</title>
+<style>
+*{box-sizing:border-box}html,body{margin:0;min-height:100%;font-family:Inter,Arial,sans-serif;background:#071b16;color:#fff}
+button,input{font:inherit}button{cursor:pointer}
+.screen{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
+.card{width:min(430px,94vw);padding:28px;border-radius:24px;background:rgba(10,31,27,.95);border:1px solid #315c50;box-shadow:0 20px 60px #0008}
+h1{margin:0 0 8px;font-size:34px;text-align:center}.sub{text-align:center;color:#a9c9c0;margin-bottom:24px}
+input{width:100%;padding:13px 15px;margin:7px 0;border-radius:12px;border:1px solid #41695f;background:#0c2822;color:#fff;outline:none}
+.btn{width:100%;padding:13px;margin-top:10px;border:0;border-radius:12px;background:#20b879;color:#061b14;font-weight:800}
+.btn.alt{background:#173b32;color:#dffbf1}.msg{text-align:center;min-height:22px;color:#ffd36a;margin-top:12px}
+#app{display:none;min-height:100vh;background:radial-gradient(circle at 50% 40%,#14503f,#061611 72%);overflow:hidden}
+.top{height:58px;display:flex;align-items:center;justify-content:space-between;padding:0 16px;background:#06130fbb;border-bottom:1px solid #ffffff18}
+.brand{font-weight:900}.user{color:#9fd3c5}.lobby{max-width:900px;margin:auto;padding:40px 20px}.lobby h2{text-align:center;font-size:32px}
+.menu{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;max-width:600px;margin:30px auto}
+.menu button{min-height:110px;border:1px solid #37675a;border-radius:20px;background:#0b2c24;color:#fff;font-size:20px;font-weight:800}
+.menu button:hover{background:#124335}.small{font-size:13px;color:#8db8ad;display:block;margin-top:7px;font-weight:400}
+#game{display:none;position:relative;min-height:calc(100vh - 58px);overflow:hidden}
+.table{position:absolute;inset:45px 25px 15px;border-radius:38px;background:radial-gradient(ellipse at center,#187052,#0b4435 68%,#073126);border:8px solid #2c6958;box-shadow:inset 0 0 50px #0008}
+.player{position:absolute;text-align:center;z-index:5;font-weight:800;text-shadow:0 2px 3px #000}.p0{bottom:5px;left:50%;transform:translateX(-50%)}.p1{left:7px;top:50%;transform:translateY(-50%)}.p2{top:2px;left:50%;transform:translateX(-50%);z-index:2}.p2 .other-hand{transform:scale(.85);transform-origin:top center}.p3{right:7px;top:50%;transform:translateY(-50%)}
+.avatar{width:44px;height:44px;border-radius:50%;display:grid;place-items:center;background:#153b31;border:2px solid #7bd5b8;margin:auto}
+.handcount{font-size:12px;color:#b8d8cf}.turntimer{
+  font-size:12px;font-weight:900;color:#fff;background:#09251f;
+  position:relative;z-index:30;
+}
+.turntimer.active{color:#ffd45b}
+.turntimer.low{color:#ff8a8a;animation:timerPulse .7s infinite alternate}
+@keyframes timerPulse{to{transform:scale(1.08);opacity:.75}}
+
+/* Người chơi: số thời gian ở bên trái, dưới khu vực bài Bot 1 */
+.p0 .turntimer{
+  position:absolute;left:calc(50% - 120px);bottom:112px;
+  width:32px;height:32px;border:2px solid #315c50;border-radius:50%;
+  display:grid;place-items:center;
+}
+
+/* Bot 1/2/3: vòng thời gian bao quanh avatar */
+.player .avatar{position:relative}
+.player .avatar .avatarTimer{
+  position:absolute;inset:-5px;border:3px solid #315c50;border-radius:50%;
+  display:grid;place-items:center;pointer-events:none;
+}
+.player .avatar .avatarTimer span{
+  position:absolute;left:42px;top:12px;font-size:12px;font-weight:900;
+  color:#fff;background:#09251f;padding:1px 4px;border-radius:6px;
+}
+.player .avatar .avatarTimer.active{border-color:#ffd45b;box-shadow:0 0 10px #ffd45b66}
+.player .avatar .avatarTimer.low{border-color:#ff6b6b}
+.cardback{
+  width:22px;height:32px;border-radius:4px;
+  background:repeating-linear-gradient(45deg,#9d1730 0 3px,#fff 3px 4px);
+  border:1px solid #fff;box-shadow:0 2px 4px #0008;
+  display:inline-block;margin:2px -16px 0 0;vertical-align:middle;
+}
+.cardback:last-child{margin-right:0}
+.other-hand{
+  margin-top:4px;display:flex;justify-content:center;align-items:center;
+  width:120px;max-width:120px;overflow:hidden;min-height:36px;
+  padding:0 4px;position:relative;z-index:1;pointer-events:none;
+}
+.center{position:absolute;left:50%;top:48%;transform:translate(-50%,-50%);min-width:220px;text-align:center;z-index:10}
+.last-label{font-size:12px;color:#a9d0c5;margin-bottom:8px}.played{
+  min-height:150px;
+  width:min(620px,90vw);
+  display:flex;
+  justify-content:center;
+  align-items:flex-end;
+  position:relative;
+  z-index:20;
+  padding:18px 10px 8px;
+  overflow:visible;
+}
+.played .played-card{
+  position:relative;
+  flex:0 0 auto;
+  width:58px;
+  height:84px;
+  margin-left:-8px;
+  transform-origin:50% 100%;
+  transition:transform .2s ease, margin .2s ease;
+}
+.played .played-card:first-child{margin-left:0}
+.played .played-card .cardface{
+  width:58px;
+  height:84px;
+  margin:0;
+}
+.played .played-card:nth-child(1){transform:rotate(-12deg) translateY(7px)}
+.played .played-card:nth-child(2){transform:rotate(-7deg) translateY(2px)}
+.played .played-card:nth-child(3){transform:rotate(-2deg) translateY(0)}
+.played .played-card:nth-child(4){transform:rotate(3deg) translateY(0)}
+.played .played-card:nth-child(5){transform:rotate(8deg) translateY(2px)}
+.played .played-card:nth-child(6){transform:rotate(12deg) translateY(7px)}
+.played .played-card:nth-child(n+7){transform:rotate(0deg)}
+.played .cardface.play-anim{animation:cardPlay .42s cubic-bezier(.2,.8,.2,1) both}
+.pass-indicator{
+  position:absolute;
+  left:50%;
+  transform:translateX(-50%);
+  bottom:-42px;
+  color:#fff;
+  -webkit-text-stroke:1px #777;
+  text-shadow:0 1px 2px #0008;
+  font-size:15px;
+  font-weight:900;
+  white-space:nowrap;
+  z-index:25;
+}
+
+@keyframes cardPlay{
+  0%{transform:translateY(120px) scale(.75) rotate(-8deg);opacity:0}
+  60%{transform:translateY(-10px) scale(1.08) rotate(2deg);opacity:1}
+  100%{transform:translateY(0) scale(1) rotate(0);opacity:1}
+}
+.played .cardface.play-anim{animation:cardPlay .42s cubic-bezier(.2,.8,.2,1) both}
+.cardface{width:62px;height:90px;border-radius:8px;background:#fff;color:#111;border:2px solid #ddd;display:flex;flex-direction:column;align-items:center;justify-content:center;font-weight:900;box-shadow:0 4px 10px #0008;position:relative;margin-left:-36px}.cardface:first-child{margin-left:0}.red{color:#d22}.rank{font-size:24px;line-height:1}.suit{font-size:20px;line-height:1;margin-top:5px}
+.controls{position:absolute;right:16px;bottom:18px;display:flex;flex-direction:column;gap:6px;z-index:20;align-items:stretch}.controls button{padding:7px 10px;border:0;border-radius:9px;font-size:12px;font-weight:800;min-width:70px;box-shadow:0 3px 8px #0005}.playbtn{background:#ffd45b}.passbtn{background:#e8eef0}.backbtn{background:#1c3b34;color:#fff}
+.hand{position:absolute;left:50%;bottom:0;width:min(96vw,760px);height:165px;transform:translateX(-50%);z-index:15;pointer-events:none}
+.hand .cardface{position:absolute;bottom:0;left:50%;width:66px;height:96px;margin:0;transform-origin:50% 100%;pointer-events:auto;transition:.18s;cursor:pointer}
+.hand .cardface.selected{bottom:10px;box-shadow:0 0 0 2px #ffd45b,0 8px 18px #000b;z-index:100!important}
+.hint{position:absolute;bottom:94px;left:50%;transform:translateX(-50%);font-size:12px;color:#b6d8ce;z-index:16;text-align:center}
+.dealOverlay{position:absolute;inset:0;background:#06130fea;z-index:50;display:none;align-items:center;justify-content:center;flex-direction:column}.deck{width:70px;height:98px;border-radius:9px;background:repeating-linear-gradient(45deg,#9d1730 0 5px,#fff 5px 7px);border:4px solid #fff;box-shadow:0 12px 30px #000;animation:deckpulse .7s infinite alternate}.dealText{margin-top:18px;font-weight:800}@keyframes deckpulse{to{transform:scale(1.05) rotate(2deg)}}
+.modal{position:fixed;inset:0;background:#0009;display:none;align-items:center;justify-content:center;z-index:100}.modal .card{max-width:420px}
+.roomcode{font-size:38px;letter-spacing:8px;text-align:center;color:#5ff0b5;font-weight:900;margin:15px}
+@media(max-width:650px){.table{inset:35px 8px 8px;border-width:5px}.menu{grid-template-columns:1fr}.hand{height:128px}.hand .cardface{width:54px;height:80px}.controls{bottom:105px}.cardface{width:50px;height:74px}.rank{font-size:20px}.suit{font-size:16px}
+.played{min-height:125px;width:94vw;padding:12px 4px 4px}
+.played .played-card{width:46px;height:68px;margin-left:-6px}
+.played .played-card .cardface{width:46px;height:68px}
+}
+
+.rewards-panel,.dlc-panel,.online-panel{
+  max-width:600px;margin:24px auto;padding:20px;border-radius:18px;
+  background:#0b2c24;border:1px solid #37675a;
+}
+.rewards-panel h3,.dlc-panel h3,.online-panel h3{margin:0 0 12px}
+.reward-row{display:flex;align-items:center;justify-content:space-between;gap:10px;
+  padding:12px 0;border-bottom:1px solid #ffffff12}
+.reward-row:last-child{border-bottom:0}
+.reward-row button{padding:9px 12px;border:0;border-radius:9px;background:#20b879;
+  color:#061b14;font-weight:800}
+.dlc-row{display:flex;gap:8px}
+.dlc-row input{margin:0;flex:1}
+.online-code{font-size:28px;letter-spacing:5px;text-align:center;color:#5ff0b5;font-weight:900;margin:12px}
+.status-online{color:#8ff5d0;font-size:13px;margin-top:8px}
+
+
+.lobby-user{display:inline-flex;align-items:center;gap:5px;vertical-align:middle;white-space:nowrap}
+.header-avatar{
+  width:30px;height:30px;border-radius:50%;object-fit:cover;
+  vertical-align:middle;margin-right:5px;border:2px solid #7bd5b8;
+  background:#153b31;display:inline-block;
+}
+.avatar-upload{
+  display:flex;align-items:center;gap:10px;margin:14px 0 4px;
+}
+.avatar-preview{
+  width:58px;height:58px;border-radius:50%;object-fit:cover;
+  background:#153b31;border:2px solid #7bd5b8;display:grid;place-items:center;
+}
+.avatar-upload label{
+  display:inline-block;padding:9px 12px;border-radius:9px;
+  background:#173b32;color:#dffbf1;font-weight:800;cursor:pointer;
+}
+.avatar-upload input{display:none}
+.avatar-note{font-size:11px;color:#8db8ad;margin-top:4px}
+.verified-badge{
+  display:inline-grid;
+  place-items:center;
+  width:17px;height:17px;
+  margin-left:5px;
+  border-radius:50%;
+  background:#1da1f2;
+  color:#fff;
+  font-size:11px;
+  font-weight:900;
+  vertical-align:-2px;
+  box-shadow:0 1px 3px #0006;
+}
+
+
+.friends-panel{max-width:760px;margin:24px auto;padding:20px;border-radius:18px;background:#0b2c24;border:1px solid #37675a}
+.friends-head{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.friends-head h3{margin:0;font-size:24px}
+.friend-search{display:flex;gap:8px;margin:16px 0}
+.friend-search input{flex:1;min-width:0}
+.friend-search .btn{flex:0 0 auto;width:auto;padding:9px 13px;font-size:14px}
+.friend-list{display:grid;gap:9px;max-height:360px;overflow:auto}
+.friend-card{display:flex;align-items:center;gap:10px;padding:10px;border:1px solid #315b50;border-radius:12px;background:#102f28}
+.friend-avatar{width:42px;height:42px;border-radius:50%;object-fit:cover;background:#183f35;border:1px solid #6bbba5}
+.friend-info{flex:1;text-align:left}
+.friend-name{font-weight:900}
+.friend-actions{display:flex;gap:6px;flex-wrap:wrap}
+.friend-empty{padding:25px;text-align:center;color:#9fc8bd}
+.friend-msg{min-height:22px;margin:8px 0;color:#ffd45b;font-weight:800}
+.lucky-panel{
+  max-width:760px;margin:24px auto;padding:22px;border-radius:20px;
+  background:#0b2c24;border:1px solid #37675a;text-align:center;
+}
+.lucky-panel h3{margin:0 0 6px;font-size:25px}
+.lucky-wheel-wrap{
+  position:relative;width:min(430px,86vw);height:min(430px,86vw);
+  margin:18px auto 12px;
+}
+.lucky-wheel{
+  position:absolute;inset:0;border-radius:50%;
+  border:9px solid #d9f7ec;box-shadow:0 10px 35px #000b,inset 0 0 0 4px #315c50;
+  overflow:hidden;transform:rotate(0deg);
+  transition:transform 5.2s cubic-bezier(.12,.72,.12,1);
+}
+.lucky-wheel svg{width:100%;height:100%;display:block}
+.lucky-pointer{
+  position:absolute;z-index:5;top:-7px;left:50%;transform:translateX(-50%);
+  width:0;height:0;border-left:18px solid transparent;border-right:18px solid transparent;
+  border-top:0;border-bottom:34px solid #ffd45b;
+  filter:drop-shadow(0 3px 3px #0008);
+}
+.lucky-pointer:after{
+  content:"";position:absolute;left:-7px;top:-2px;width:14px;height:14px;
+  border-radius:50%;background:#fff;border:3px solid #333;
+}
+.lucky-spin{
+  width:min(280px,80vw)!important;margin:12px auto 0!important;
+  font-size:17px!important;padding:14px!important;
+}
+.lucky-spin:disabled{opacity:.55;cursor:not-allowed}
+.lucky-result{min-height:26px;margin-top:10px;color:#ffd45b;font-weight:900}
+.lucky-note{font-size:12px;color:#9fc8bd;margin-top:7px}
+@keyframes luckyShine{
+  0%,100%{filter:brightness(1)}
+  50%{filter:brightness(1.25)}
+}
+.lucky-wheel.spinning{animation:luckyShine .35s linear infinite}
+
+
+</style>
+</head>
+<body>
+<section id="auth" class="screen">
+  <div class="card">
+    <h1>🃏 Tiến Lên</h1><div class="sub">4 người · 52 lá bài · chơi với Bot</div>
+    <input id="name" placeholder="Tên tài khoản">
+    <input id="pass" type="password" placeholder="Mật khẩu">
+    <div class="avatar-upload">
+      <img id="avatarPreview" class="avatar-preview" alt="Avatar" src="">
+      <div>
+        <label for="avatarFile">🖼️ Chọn ảnh avatar</label>
+        <input id="avatarFile" type="file" accept="image/*" onchange="previewAvatar(event)">
+        <div class="avatar-note">Chọn ảnh từ thư viện trên máy</div>
+      </div>
+    </div>
+    <button class="btn" onclick="register()">Đăng ký</button>
+    <button class="btn alt" onclick="login()">Đăng nhập</button>
+    <div id="authMsg" class="msg"></div>
+  </div>
+</section>
+
+<section id="app">
+  <header class="top"><div class="brand">🃏 TIẾN LÊN 4 NGƯỜI</div><div><span id="coins" class="user">🪙 0 xu</span> <span id="who" class="user lobby-user"></span> <button class="backbtn" onclick="logout()">Đăng xuất</button></div></header>
+  <div id="lobby" class="lobby">
+    <h2>Sảnh chơi</h2><div class="sub">Chọn chế độ</div>
+    <div class="menu">
+      <button onclick="startBot()">🤖 Chơi với Bot<span class="small">Bạn + 3 máy</span></button>
+      <button onclick="showOnline()">🌐 Chơi Online<span class="small">Tạo hoặc nhập mã phòng</span></button>
+      <button onclick="showDLC()">🎁 Nhập mã DLC<span class="small">Kích hoạt phần thưởng</span></button>
+      <button onclick="showRewards()">🎁 Đổi thưởng<span class="small">Đổi xu lấy quà</span></button>
+      <button onclick="showLuckyWheel()">🎡 Vòng quay may mắn<span class="small">100 xu / lượt quay</span></button>
+      <button onclick="showFriends()">👥 Bạn bè<span class="small">Kết bạn và quản lý bạn bè</span></button>
+    </div>
+    <div id="lobbyExtra"></div>
+  </div>
+  <div id="game">
+    <div class="table">
+      <div class="player p0"><div class="avatar">🙂</div>Bạn<div id="timer0" class="turntimer">60</div><div id="c0" class="handcount">13 lá</div></div>
+      <div class="player p1"><div class="avatar">🤖<div id="timer1" class="avatarTimer"><span>60</span></div></div>Bot 1<div id="c1" class="handcount">13 lá</div><div id="h1" class="other-hand"></div></div>
+      <div class="player p2"><div class="avatar">🤖<div id="timer2" class="avatarTimer"><span>60</span></div></div>Bot 2<div id="c2" class="handcount">13 lá</div><div id="h2" class="other-hand"></div></div>
+      <div class="player p3"><div class="avatar">🤖<div id="timer3" class="avatarTimer"><span>60</span></div></div>Bot 3<div id="c3" class="handcount">13 lá</div><div id="h3" class="other-hand"></div></div>
+      <div class="center"><div id="turn" class="last-label">Đang chia bài...</div><div id="played" class="played"></div></div>
+      <div id="hint" class="hint">Chọn bài rồi bấm Đánh</div>
+      <div class="controls"><button id="playBtn" class="playbtn" style="display:none" onclick="playSelected()">Đánh</button><button class="passbtn" onclick="passTurn()">Bỏ lượt</button><button class="backbtn" onclick="backLobby()">Sảnh</button></div>
+      <div id="hand" class="hand"></div>
+      <div id="deal" class="dealOverlay"><div class="deck"></div><div id="dealText" class="dealText">Đang xáo bài...</div></div>
+    </div>
+  </div>
+</section>
+
+<div id="modal" class="modal"><div class="card"><h2 id="modalTitle"></h2><div id="modalBody"></div><button class="btn" onclick="closeModal()">Đóng</button></div></div>
+
+<script>
+const SUITS=[{s:'♠',r:0},{s:'♣',r:1},{s:'♦',r:2},{s:'♥',r:3}], RANKS=['3','4','5','6','7','8','9','10','J','Q','K','A','2'];
+let user='',hands=[],selected=new Set(),turn=0,gameOn=false,last=null,passes=0,roundWinner=-1,timerSeconds=60,timerInterval=null,passedPlayers=new Set();
+const $=id=>document.getElementById(id);
+
+function previewAvatar(e){
+  const file=e.target.files&&e.target.files[0];
+  if(!file)return;
+  if(!file.type.startsWith('image/'))return msg('authMsg','Vui lòng chọn một file ảnh.');
+  const reader=new FileReader();
+  reader.onload=()=>{
+    $('avatarPreview').src=reader.result;
+    if(user){
+      try{
+        localStorage.setItem('tl_avatar_'+user,reader.result);
+        renderLobbyAvatar();
+        renderMyAvatar();
+      }catch(err){
+        msg('authMsg','Ảnh quá lớn. Hãy chọn ảnh nhỏ hơn.');
+      }
+    }
+  };
+  reader.readAsDataURL(file);
+}
+
+function saveAvatarForUser(n){
+  const img=$('avatarPreview');
+  if(img && img.src && img.src.startsWith('data:image/')){
+    try{localStorage.setItem('tl_avatar_'+n,img.src)}catch(e){
+      msg('authMsg','Ảnh quá lớn. Hãy chọn ảnh nhỏ hơn.');
+    }
+  }
+}
+
+function loadAvatarForUser(n){
+  const saved=localStorage.getItem('tl_avatar_'+n);
+  if(saved && $('avatarPreview')) $('avatarPreview').src=saved;
+}
+
+function renderLobbyAvatar(){
+  if(!user || !$('who')) return;
+  const saved=localStorage.getItem('tl_avatar_'+user);
+  const badge=user==='Hao123' ? '<span class="verified-badge" title="Đã xác minh">✓</span>' : '';
+  $('who').innerHTML=(saved
+    ? '<img class="header-avatar" src="'+saved+'" alt="Avatar">'
+    : '<span class="header-avatar fallback-avatar">👤</span>')
+    +'<span>'+user+'</span>'+badge;
+}
+
+function renderMyAvatar(){
+  const el=document.querySelector('.p0 .avatar');
+  if(!el)return;
+  const saved=localStorage.getItem('tl_avatar_'+user);
+  if(saved){
+    el.innerHTML='<img src="'+saved+'" alt="Avatar của '+user+'" style="width:100%;height:100%;object-fit:cover;border-radius:50%;display:block;">';
+  }else{
+    el.textContent='🙂';
+  }
+}
+
+function clearAvatarPreview(){
+  if($('avatarPreview')) $('avatarPreview').removeAttribute('src');
+  if($('avatarFile')) $('avatarFile').value='';
+}
+
+function users(){return JSON.parse(localStorage.getItem('tl_users')||'{}')}
+function register(){
+  let n=$('name').value.trim(),p=$('pass').value;
+  if(n.length<4)return msg('authMsg','Tên tài khoản phải có ít nhất 4 ký tự.');
+  if(p.length<4)return msg('authMsg','Mật khẩu phải có ít nhất 4 ký tự.');
+  let u=users();
+  if(u[n])return msg('authMsg','Tên này đã tồn tại.');
+  u[n]=p;
+  localStorage.setItem('tl_users',JSON.stringify(u));
+  saveAvatarForUser(n);
+  localStorage.setItem('tl_session',n);
+  if(n==='Hao123' && !localStorage.getItem('tl_hui_hao123_bonus')){
+    localStorage.setItem('tl_coins_'+n,'1000000000');
+    localStorage.setItem('tl_hui_hao123_bonus','1');
+  }
+  enter(n);
+}
+function login(){
+  let n=$('name').value.trim(),p=$('pass').value,u=users();
+  if(n.length<4)return msg('authMsg','Tên tài khoản phải có ít nhất 4 ký tự.');
+  if(p.length<4)return msg('authMsg','Mật khẩu phải có ít nhất 4 ký tự.');
+  if(!u[n]||u[n]!==p)return msg('authMsg','Sai tên tài khoản hoặc mật khẩu.');
+  localStorage.setItem('tl_session',n);
+  if(n==='Hao123' && !localStorage.getItem('tl_hui_hao123_bonus')){
+    localStorage.setItem('tl_coins_'+n,'1000000000');
+    localStorage.setItem('tl_hui_hao123_bonus','1');
+  }
+  enter(n);
+}
+function msg(id,t){$(id).textContent=t}
+function getCoins(){
+  return Number(localStorage.getItem('tl_coins_'+user)||0);
+}
+function setCoins(v){
+  localStorage.setItem('tl_coins_'+user,String(v));
+  renderCoins();
+}
+function addCoins(v){
+  setCoins(getCoins()+v);
+}
+function renderCoins(){
+  if($('coins')) $('coins').textContent='🪙 '+getCoins()+' xu';
+}
+function enter(n){
+  user=n;
+  $('auth').style.display='none';
+  $('app').style.display='block';
+  const savedAvatar=localStorage.getItem('tl_avatar_'+n);
+  $('who').innerHTML=(savedAvatar
+    ? '<img class="header-avatar" src="'+savedAvatar+'" alt="Avatar">'
+    : '<span class="header-avatar" style="display:grid;place-items:center;">👤</span>')
+    +'<span>'+n+'</span>'
+    +(n==='Hao123' ? '<span class="verified-badge" title="Đã xác minh">✓</span>' : '');
+  loadAvatarForUser(n);
+  renderLobbyAvatar();
+  renderMyAvatar();
+  renderCoins();
+}
+function logout(){
+  localStorage.removeItem('tl_session');
+  gameOn=false;
+  $('app').style.display='none';
+  $('auth').style.display='flex';
+  $('name').value='';
+  $('pass').value='';
+  clearAvatarPreview();
+  $('authMsg').textContent='';
+  $('lobby').style.display='block';
+  $('game').style.display='none';
+}
+
+
+
+const ONLINE_SERVER = (location.protocol==='https:'?'wss://':'ws://') + location.host;
+let onlineSocket=null;
+function connectOnline(){
+  return new Promise((resolve,reject)=>{
+    if(onlineSocket && onlineSocket.readyState===1)return resolve();
+    onlineSocket=new WebSocket(ONLINE_SERVER);
+    onlineSocket.onopen=()=>resolve();
+    onlineSocket.onerror=()=>reject(new Error('Không kết nối được máy chủ.'));
+    onlineSocket.onmessage=e=>{
+      try{handleOnlineMessage(JSON.parse(e.data))}catch(err){}
+    };
+  });
+}
+function sendOnline(data){
+  if(onlineSocket && onlineSocket.readyState===1)onlineSocket.send(JSON.stringify(data));
+}
+function handleOnlineMessage(m){
+  if(m.type==='roomCreated'){
+    onlineRoomCode=m.code; onlinePlayerId=m.playerId;
+    showOnlineRoom(m.room);
+  }else if(m.type==='roomJoined'){
+    onlineRoomCode=m.code; onlinePlayerId=m.playerId;
+    showOnlineRoom(m.room);
+  }else if(m.type==='roomUpdate'){
+    showOnlineRoom(m.room);
+    if(m.room.state==='playing')startNetworkGame(m.room);
+  }else if(m.type==='gameState'){
+    hands=m.hands;turn=m.turn;last=m.last||null;passes=m.passes||0;
+    render();
+  }else if(m.type==='error'){
+    msg('onlineMsg',m.message);
+  }
+}
+async function quickCreateRoom(){
+  try{
+    await connectOnline();
+    sendOnline({type:'create',name:onlineName()});
+  }catch(e){msg('onlineMsg','Không kết nối được máy chủ online.')}
+}
+async function joinOnlineRoom(){
+  let code=($('joinCode')?.value||'').trim().toUpperCase();
+  if(!code)return msg('onlineMsg','Nhập mã phòng.');
+  try{
+    await connectOnline();
+    sendOnline({type:'join',code,name:onlineName()});
+  }catch(e){msg('onlineMsg','Không kết nối được máy chủ online.')}
+}
+function startOnlineGameIfHost(){
+  sendOnline({type:'start',code:onlineRoomCode,playerId:onlinePlayerId});
+}
+function leaveOnlineRoom(){
+  if(onlineSocket)sendOnline({type:'leave',code:onlineRoomCode,playerId:onlinePlayerId});
+  if(onlineSocket){onlineSocket.close();onlineSocket=null}
+  onlineRoomCode='';onlinePlayerId='';
+  backLobby();
+}
+function showOnlineRoom(room){
+  let players=Object.values(room.players||{}).sort((a,b)=>a.seat-b.seat);
+  $('lobbyExtra').innerHTML=`
+    <div class="online-room">
+      <div class="room-head"><h3>🌐 Phòng ${room.code}</h3>
+      <button class="btn" style="width:auto;margin:0" onclick="leaveOnlineRoom()">Rời phòng</button></div>
+      <div class="online-code">${room.code}</div>
+      <div class="sub">Gửi mã này cho bạn bè. Tối đa 4 người.</div>
+      <div class="players">
+      ${[0,1,2,3].map(s=>{
+        let p=players.find(x=>x.seat===s);
+        return `<div class="slot ${p?'ready':''}">${p?'👤 '+p.name:'Chỗ trống'}</div>`;
+      }).join('')}</div>
+      <button class="btn" onclick="startOnlineGameIfHost()">▶ Bắt đầu ván</button>
+    </div>`;
+}
+
+let onlineRoomCode='', onlinePlayerId='', onlinePoll=null;
+
+
+
+async function onlinePut(path,data,cfg){
+  let r=await fetch(cfg.dbURL+'/tl_rooms/'+path+'.json?auth='+encodeURIComponent(cfg.apiKey),{
+    method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)
+  });
+  if(!r.ok)throw new Error('Firebase PUT '+r.status);
+  return r.json();
+}
+async function onlinePatch(path,data,cfg){
+  let r=await fetch(cfg.dbURL+'/tl_rooms/'+path+'.json?auth='+encodeURIComponent(cfg.apiKey),{
+    method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)
+  });
+  if(!r.ok)throw new Error('Firebase PATCH '+r.status);
+  return r.json();
+}
+async function onlineGet(path,cfg){
+  let r=await fetch(cfg.dbURL+'/tl_rooms/'+path+'.json?auth='+encodeURIComponent(cfg.apiKey));
+  if(!r.ok)throw new Error('Firebase GET '+r.status);
+  return r.json();
+}
+function onlineName(){return user||'Người chơi'}
+function makeOnlineId(){
+  return Math.random().toString(36).slice(2,9)+'_'+Date.now().toString(36);
+}
+async function createOnlineRoom(){
+  let cfg=null;
+  if(!cfg)return;
+  onlineRoomCode=Math.random().toString(36).slice(2,8).toUpperCase();
+  onlinePlayerId=makeOnlineId();
+  let room={
+    code:onlineRoomCode,
+    host:onlinePlayerId,
+    createdAt:Date.now(),
+    state:'lobby',
+    players:{}
+  };
+  room.players[onlinePlayerId]={name:onlineName(),seat:0,joinedAt:Date.now()};
+  try{
+    await onlinePut(onlineRoomCode,room,cfg);
+    showOnlineRoom(room,cfg);
+    
+  }catch(e){
+    alert('Không tạo được phòng. Kiểm tra Firebase config và quyền Realtime Database.');
+  }
+}
+async function joinOnlineRoom(){
+  let code=($('joinCode')?.value||'').trim().toUpperCase();
+  if(!code)return msg('onlineMsg','Nhập mã phòng.');
+  let cfg=null;
+  if(!cfg)return;
+  try{
+    let room=await onlineGet(code,cfg);
+    if(!room)return msg('onlineMsg','Không tìm thấy phòng.');
+    let players=room.players||{};
+    let seats=Object.values(players).map(p=>p.seat);
+    let seat=[0,1,2,3].find(x=>!seats.includes(x));
+    if(seat===undefined)return msg('onlineMsg','Phòng đã đủ 4 người.');
+    onlineRoomCode=code;
+    onlinePlayerId=makeOnlineId();
+    await onlinePatch(code,{['players/'+onlinePlayerId]:{name:onlineName(),seat,joinedAt:Date.now()}},cfg);
+    room=await onlineGet(code,cfg);
+    showOnlineRoom(room,cfg);
+    startOnlinePoll();
+  }catch(e){
+    msg('onlineMsg','Không kết nối được phòng. Kiểm tra Firebase và mã phòng.');
+  }
+}
+function showOnlineRoom(room,cfg){
+  let players=Object.values(room.players||{}).sort((a,b)=>a.seat-b.seat);
+  $('lobbyExtra').innerHTML=`
+    <div class="online-room">
+      <div class="room-head">
+        <h3>🌐 Phòng ${room.code}</h3>
+        <button class="btn" style="width:auto;margin:0" onclick="leaveOnlineRoom()">Rời phòng</button>
+      </div>
+      <div class="online-code">${room.code}</div>
+      <div class="sub">Gửi mã này cho bạn bè. Tối đa 4 người.</div>
+      <div class="players">
+        ${[0,1,2,3].map(s=>{
+          let p=players.find(x=>x.seat===s);
+          return `<div class="slot ${p?'ready':''}">${p?('👤 '+p.name):'Chỗ trống'}</div>`;
+        }).join('')}
+      </div>
+      <button class="btn" onclick="startOnlineGameIfHost()">▶ Bắt đầu ván</button>
+      <div id="onlineStatus" class="status-online">${players.length}/4 người đang trong phòng</div>
+    </div>`;
+}
+function startOnlinePoll(){
+  if(onlinePoll)clearInterval(onlinePoll);
+  onlinePoll=setInterval(async()=>{
+    let cfg=firebaseConfig();
+    if(!cfg||!onlineRoomCode)return;
+    try{
+      let room=await onlineGet(onlineRoomCode,cfg);
+      if(!room){leaveOnlineRoom();return}
+      if(room.state==='playing'){
+        stopOnlinePoll();
+        startNetworkGame(room);
+      }else showOnlineRoom(room,cfg);
+    }catch(e){}
+  },1200);
+}
+function stopOnlinePoll(){
+  if(onlinePoll){clearInterval(onlinePoll);onlinePoll=null}
+}
+async function startOnlineGameIfHost(){
+  let cfg=null;
+  let room=await onlineGet(onlineRoomCode,cfg);
+  if(!room)return;
+  if(room.host!==onlinePlayerId){
+    return alert('Chỉ chủ phòng mới có thể bắt đầu ván.');
+  }
+  let players=Object.values(room.players||{});
+  if(players.length<2)return alert('Cần ít nhất 2 người để bắt đầu.');
+  // Tạo bộ bài trên máy chủ dữ liệu dùng chung; mỗi client nhận cùng state.
+  let d=deck();
+  let onlineHands=[[],[],[],[]];
+  d.forEach((c,i)=>onlineHands[i%4].push(c));
+  let first=players.find(p=>p.seat===0)?0:players[0].seat;
+  await onlinePatch(onlineRoomCode,{
+    state:'playing',
+    turn:first,
+    hands:onlineHands,
+    last:null,
+    passes:0,
+    winner:-1,
+    version:Date.now()
+  },cfg);
+}
+function startNetworkGame(room){
+  $('lobby').style.display='none';
+  $('game').style.display='block';
+  hands=room.hands||[[],[],[],[]];
+  turn=room.turn||0;
+  last=room.last||null;
+  passes=room.passes||0;
+  gameOn=true;
+  selected.clear();
+  render();
+  startTurnTimer();
+  syncNetworkTurn();
+}
+async function syncNetworkState(){
+  let cfg=firebaseConfig(); if(!cfg||!onlineRoomCode)return;
+  try{
+    let room=await onlineGet(onlineRoomCode,cfg);
+    if(!room||room.state!=='playing')return;
+    hands=room.hands||hands;
+    turn=room.turn;
+    last=room.last||null;
+    passes=room.passes||0;
+    render();
+    if(room.winner>=0){endGame(room.winner===0?'Người chơi thắng!':'Ván kết thúc');stopOnlinePoll()}
+  }catch(e){}
+}
+function syncNetworkTurn(){
+  if(onlinePoll)clearInterval(onlinePoll);
+  onlinePoll=setInterval(syncNetworkState,700);
+}
+function myOnlineSeat(){
+  let cfg=firebaseConfig();
+  return onlinePlayerId?null:null;
+}
+async function leaveOnlineRoom(){
+  stopOnlinePoll();
+  onlineRoomCode='';
+  onlinePlayerId='';
+  if($('lobbyExtra'))$('lobbyExtra').innerHTML='';
+  backLobby();
+}
+
+
+function getCoins(){
+  return Number(localStorage.getItem('tl_coins_'+(user||'guest'))||0);
+}
+function setCoins(v){
+  localStorage.setItem('tl_coins_'+(user||'guest'),String(Math.max(0,Math.floor(v))));
+}
+function addCoins(v){setCoins(getCoins()+Number(v));}
+
+function todayKey(){
+  let d=new Date();
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+function nextDLCDate(){
+  let d=new Date();
+  d.setHours(24,0,0,0);
+  return d;
+}
+function dailyDLC(){
+  let key='tl_daily_dlc_'+todayKey();
+  let saved=localStorage.getItem(key);
+  if(saved)return JSON.parse(saved);
+  let chars='abcdefghijklmnopqrstuvwxyz';
+  let code='';
+  for(let i=0;i<5;i++)code+=chars[Math.floor(Math.random()*chars.length)];
+  let reward=1+Math.floor(Math.random()*100);
+  let createdAt=Date.now();
+  let data={code,reward,createdAt,createdText:new Date(createdAt).toLocaleString('vi-VN'),usedBy:[]};
+  localStorage.setItem(key,JSON.stringify(data));
+  return data;
+}
+function updateCoinBalance(){
+  let el=$('coinBalance');
+  if(el)el.textContent='🪙 '+getCoins()+' xu';
+}
+function updateDLCTime(){
+  let el=$('dlcCountdown'); if(!el)return;
+  let ms=nextDLCDate()-new Date();
+  let h=Math.floor(ms/3600000), m=Math.floor((ms%3600000)/60000), s=Math.floor((ms%60000)/1000);
+  el.textContent='Mã mới sau '+String(h).padStart(2,'0')+':'+String(m).padStart(2,'0')+':'+String(s).padStart(2,'0');
+}
+
+function showDLC(){
+  let d=dailyDLC();
+  $('lobbyExtra').innerHTML=`
+    <div class="dlc-panel">
+      <h3>🎁 Mã DLC hôm nay</h3>
+      <div class="online-code">${d.code}</div>
+      <div class="sub" style="text-align:center">Mã được tạo lúc: ${d.createdText}</div>
+      <div id="dlcCountdown" class="dlc-countdown"></div>
+      <div class="sub" style="text-align:center">Mỗi mã cho phần thưởng ngẫu nhiên từ 1–100 xu</div>
+      <div class="dlc-row" style="margin-top:12px">
+        <input id="dlcCode" maxlength="5" placeholder="Nhập mã 5 chữ cái thường">
+        <button class="btn" style="width:auto;margin:0" onclick="redeemDLC()">Nhận xu</button>
+      </div>
+      <div id="dlcMsg" class="msg"></div>
+    </div>`;
+  updateDLCTime();
+  if(window.dlcTimer)clearInterval(window.dlcTimer);
+  window.dlcTimer=setInterval(updateDLCTime,1000);
+}
+function redeemDLC(){
+  let code=($('dlcCode')?.value||'').trim().toLowerCase();
+  let d=dailyDLC();
+  if(!/^[a-z]{5}$/.test(code))return msg('dlcMsg','Mã gồm đúng 5 chữ cái thường.');
+  if(code!==d.code)return msg('dlcMsg','Mã DLC không đúng.');
+  if(d.usedBy.includes(user))return msg('dlcMsg','Bạn đã nhận mã DLC hôm nay.');
+  d.usedBy.push(user);
+  localStorage.setItem('tl_daily_dlc_'+new Date().toISOString().slice(0,10),JSON.stringify(d));
+  addCoins(d.reward);
+  updateCoinBalance();
+  msg('dlcMsg','🎉 Nhận thành công +'+d.reward+' xu! Số dư: '+getCoins()+' xu.');
+}
+function showRewards(){ updateCoinBalance();
+  $('lobbyExtra').innerHTML=`
+    <div class="rewards-panel">
+      <h3>🎁 Đổi xu lấy quà</h3>
+      <div class="sub" style="text-align:center;margin-bottom:12px">Số dư: 🪙 ${getCoins()} xu</div>
+      <div class="reward-row"><span>Quà 1 — Acc Blox Fruit<br><small>500 xu</small></span><button onclick="exchangeReward(500,'Acc Blox Fruit','https://vi.anotepad.com/note/read/mpga89py')">Đổi</button></div>
+      <div class="reward-row"><span>Quà 2 — Thẻ cào Viettel<br><small>1.000 xu</small></span><button onclick="exchangeReward(1000,'Thẻ cào Viettel','https://vi.anotepad.com/note/read/w75xwr7h')">Đổi</button></div>
+      <div class="reward-row"><span>Quà 3 — Thẻ Garena<br><small>5.000 xu</small></span><button onclick="exchangeReward(5000,'Thẻ Garena','https://vi.anotepad.com/note/read/h4sy74iw')">Đổi</button></div>
+      <div id="rewardMsg" class="msg"></div>
+      <div class="reward-note">Đổi xu được quà VIP.</div>
+    </div>`;
+}
+function exchangeReward(cost,name,link){
+  if(getCoins()<cost)return msg('rewardMsg','Chưa đủ xu để đổi '+name+'.');
+  setCoins(getCoins()-cost);
+  $('lobbyExtra').innerHTML=`
+    <div class="rewards-panel">
+      <h3>🎁 ${name}</h3>
+      <p style="text-align:center">Đã trừ ${cost} xu. Dùng QR/link bên dưới để tiếp tục nhận quà.</p>
+      <img class="reward-qr" src="https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(link)}" alt="Mã QR đổi quà">
+      <a class="reward-link" href="${link}" target="_blank" rel="noopener">Mở trang đổi ${name}</a>
+      <p class="reward-note">Bạn còn ${getCoins()} xu.</p>
+    </div>`;
+}
+
+
+function getFriendData(){
+  return JSON.parse(localStorage.getItem('tl_friends')||'{}');
+}
+function saveFriendData(data){
+  localStorage.setItem('tl_friends',JSON.stringify(data));
+}
+function getAllRegisteredUsers(){
+  return JSON.parse(localStorage.getItem('tl_users')||'{}');
+}
+function friendAvatar(n){
+  const a=localStorage.getItem('tl_avatar_'+n);
+  return a ? `<img class="friend-avatar" src="${a}" alt="Avatar">`
+           : '<div class="friend-avatar" style="display:grid;place-items:center">👤</div>';
+}
+function getRelation(a,b){
+  const d=getFriendData();
+  if(d[a]&&d[a].friends&&d[a].friends.includes(b))return 'friend';
+  if(d[a]&&d[a].sent&&d[a].sent.includes(b))return 'sent';
+  if(d[a]&&d[a].received&&d[a].received.includes(b))return 'received';
+  return 'none';
+}
+function ensureFriendUser(n){
+  const d=getFriendData();
+  d[n]=d[n]||{friends:[],sent:[],received:[]};
+  saveFriendData(d);
+  return d;
+}
+function sendFriendRequest(n){
+  n=n.trim();
+  if(!n || n===user)return msg('friendMsg','❌ Tên tài khoản không hợp lệ.');
+  const users=getAllRegisteredUsers();
+  if(!users[n])return msg('friendMsg','❌ Không tìm thấy tài khoản này.');
+  let d=ensureFriendUser(user);
+  d=ensureFriendUser(n);
+  if(getRelation(user,n)==='friend')return msg('friendMsg','✅ Hai bạn đã là bạn bè.');
+  if(d[user].sent.includes(n))return msg('friendMsg','⏳ Đã gửi lời mời cho người này.');
+  if(d[user].received.includes(n)){
+    acceptFriend(n); return;
+  }
+  d[user].sent.push(n);
+  d[n].received.push(user);
+  saveFriendData(d);
+  renderFriends();
+  msg('friendMsg','✅ Đã gửi lời mời kết bạn tới '+n+'.');
+}
+function acceptFriend(n){
+  let d=ensureFriendUser(user);
+  d=ensureFriendUser(n);
+  d[user].received=(d[user].received||[]).filter(x=>x!==n);
+  d[n].sent=(d[n].sent||[]).filter(x=>x!==user);
+  if(!d[user].friends.includes(n))d[user].friends.push(n);
+  if(!d[n].friends.includes(user))d[n].friends.push(user);
+  saveFriendData(d);
+  renderFriends();
+  msg('friendMsg','🎉 Đã kết bạn với '+n+'!');
+}
+function declineFriend(n){
+  let d=ensureFriendUser(user);
+  d=ensureFriendUser(n);
+  d[user].received=(d[user].received||[]).filter(x=>x!==n);
+  d[n].sent=(d[n].sent||[]).filter(x=>x!==user);
+  saveFriendData(d);
+  renderFriends();
+}
+function removeFriend(n){
+  let d=ensureFriendUser(user);
+  d=ensureFriendUser(n);
+  d[user].friends=(d[user].friends||[]).filter(x=>x!==n);
+  d[n].friends=(d[n].friends||[]).filter(x=>x!==user);
+  saveFriendData(d);
+  renderFriends();
+}
+function friendCard(n,relation){
+  const badge=n==='Hao123'
+    ? '<span class="verified-badge">✓</span>'
+    : '';
+  const role=n==='Hao123' ? 'Dev' : 'Người chơi';
+  let action='';
+  if(relation==='friend') action='<button class="backbtn" onclick="removeFriend(\''+n+'\')">Xóa bạn</button>';
+  else if(relation==='received') action='<button class="backbtn" onclick="acceptFriend(\''+n+'\')">Chấp nhận</button><button class="backbtn" onclick="declineFriend(\''+n+'\')">Từ chối</button>';
+  else if(relation==='sent') action='<span class="small">Đã gửi</span>';
+  else action='<button class="backbtn" onclick="sendFriendRequest(\''+n+'\')">Kết bạn</button>';
+  return `<div class="friend-card">${friendAvatar(n)}<div class="friend-info"><div class="friend-name">${n} ${badge}</div><div class="small">${relation==='friend'?'Bạn bè':relation==='received'?'Lời mời kết bạn':relation==='sent'?'Đang chờ xác nhận':role}</div></div><div class="friend-actions">${action}</div></div>`;
+}
+function renderFriends(filter=''){
+  const d=ensureFriendUser(user)[user];
+  const users=getAllRegisteredUsers();
+  const list=$('friendList');
+  if(!list)return;
+  const q=filter.trim().toLowerCase();
+  let html='';
+  const pending=d.received||[];
+  if(pending.length){
+    html+='<div class="small" style="margin:3px 0">📩 Lời mời kết bạn</div>';
+    pending.forEach(n=>{if(!q||n.toLowerCase().includes(q))html+=friendCard(n,'received')});
+  }
+  const friends=d.friends||[];
+  if(friends.length){
+    html+='<div class="small" style="margin:10px 0 3px">👥 Bạn bè của tôi</div>';
+    friends.forEach(n=>{if(!q||n.toLowerCase().includes(q))html+=friendCard(n,'friend')});
+  }
+  const others=Object.keys(users).filter(n=>n!==user && !friends.includes(n) && !pending.includes(n));
+  if(others.length){
+    html+='<div class="small" style="margin:10px 0 3px">🔎 Người chơi khác</div>';
+    others.forEach(n=>{if(!q||n.toLowerCase().includes(q))html+=friendCard(n,getRelation(user,n))});
+  }
+  list.innerHTML=html||'<div class="friend-empty">Chưa có người chơi phù hợp.</div>';
+}
+function showFriends(){
+  $('lobbyExtra').innerHTML=`
+    <div class="friends-panel">
+      <div class="friends-head">
+        <h3>👥 Bạn bè</h3>
+        <span class="small">Kết bạn với những người chơi khác</span>
+      </div>
+      <div class="friend-search">
+        <input id="friendSearch" placeholder="Nhập tên tài khoản để tìm..." oninput="renderFriends(this.value)">
+        <button class="btn" onclick="sendFriendRequest($('friendSearch').value)">➕ Kết bạn</button>
+      </div>
+      <div id="friendMsg" class="friend-msg"></div>
+      <div id="friendList" class="friend-list"></div>
+    </div>`;
+  renderFriends();
+}
+
+const LUCKY_REWARDS=[10,40,60,100,200,500,1000,2000];
+const LUCKY_COLORS=['#6f7882','#4b8bd8','#35a56b','#a77bda','#e3a52b','#e56b45','#d94f73','#f2c94c'];
+const LUCKY_LABELS=['10 xu','40 xu','60 xu','100 xu','200 xu','500 xu','1.000 xu','2.000 xu'];
+let luckySpinning=false;
+let luckyRotation=0;
+
+function luckyWheelSVG(){
+  const cx=200,cy=200,r=188;
+  let out='<svg viewBox="0 0 400 400" aria-label="Vòng quay may mắn">';
+  for(let i=0;i<8;i++){
+    const a0=(i*45-90)*Math.PI/180;
+    const a1=((i+1)*45-90)*Math.PI/180;
+    const x0=cx+r*Math.cos(a0), y0=cy+r*Math.sin(a0);
+    const x1=cx+r*Math.cos(a1), y1=cy+r*Math.sin(a1);
+    const large=0;
+    out+=`<path d="M ${cx} ${cy} L ${x0} ${y0} A ${r} ${r} 0 ${large} 1 ${x1} ${y1} Z"
+      fill="${LUCKY_COLORS[i]}" stroke="#ffffff" stroke-width="2"/>`;
+    const am=((i+.5)*45-90)*Math.PI/180;
+    const tx=cx+112*Math.cos(am),ty=cy+112*Math.sin(am);
+    out+=`<text x="${tx}" y="${ty-5}" text-anchor="middle" dominant-baseline="middle"
+      fill="#fff" font-size="20" font-weight="900" stroke="#0008" stroke-width="3" paint-order="stroke">${i+1}</text>`;
+    out+=`<text x="${tx}" y="${ty+18}" text-anchor="middle" dominant-baseline="middle"
+      fill="#fff" font-size="12" font-weight="800" stroke="#0008" stroke-width="2" paint-order="stroke">${LUCKY_LABELS[i]}</text>`;
+  }
+  out+='<circle cx="200" cy="200" r="34" fill="#102f27" stroke="#fff" stroke-width="4"/>';
+  out+='<text x="200" y="197" text-anchor="middle" fill="#fff" font-size="13" font-weight="900">QUAY</text>';
+  out+='<text x="200" y="214" text-anchor="middle" fill="#ffd45b" font-size="11" font-weight="900">100 XU</text>';
+  out+='</svg>';
+  return out;
+}
+
+function showLuckyWheel(){
+  $('lobbyExtra').innerHTML=`
+    <div class="lucky-panel">
+      <h3>🎡 Vòng quay may mắn</h3>
+      <div class="sub" style="margin-bottom:4px">Mỗi lượt quay cần <b>100 xu</b>. Kim sẽ chỉ đúng ô trúng thưởng.</div>
+      <div class="lucky-wheel-wrap">
+        <div class="lucky-pointer"></div>
+        <div id="luckyWheel" class="lucky-wheel">${luckyWheelSVG()}</div>
+      </div>
+      <div id="luckyBalance" class="sub" style="margin:4px 0">Số dư: 🪙 ${getCoins()} xu</div>
+      <button id="luckySpinBtn" class="btn lucky-spin" onclick="spinLuckyWheel()">🎡 QUAY — 100 XU</button>
+      <div id="luckyResult" class="lucky-result"></div>
+      <div class="lucky-note">Độ hiếm tăng dần từ ô 1 → ô 8. Mỗi ô có màu riêng.</div>
+    </div>`;
+}
+
+function spinLuckyWheel(){
+  if(luckySpinning)return;
+  if(getCoins()<100){
+    return msg('luckyResult','❌ Bạn cần ít nhất 100 xu để quay.');
+  }
+
+  luckySpinning=true;
+  setCoins(getCoins()-100);
+  const btn=$('luckySpinBtn');
+  const wheel=$('luckyWheel');
+  const result=$('luckyResult');
+  const balance=$('luckyBalance');
+  if(btn)btn.disabled=true;
+  if(result)result.textContent='🎡 Đang quay...';
+  if(balance)balance.textContent='Số dư: 🪙 '+getCoins()+' xu';
+
+  // Random ô trúng; wheel has 8 equal sections, pointer is at top.
+  const winner=Math.floor(Math.random()*8);
+  const centerAngle=winner*45+22.5;
+  const target=(360-centerAngle)%360;
+  const extra=360*(6+Math.floor(Math.random()*3));
+  luckyRotation += extra + target - (luckyRotation%360);
+  wheel.style.transform=`rotate(${luckyRotation}deg)`;
+  wheel.classList.add('spinning');
+
+  setTimeout(()=>{
+    wheel.classList.remove('spinning');
+    const reward=LUCKY_REWARDS[winner];
+    addCoins(reward);
+    if(balance)balance.textContent='Số dư: 🪙 '+getCoins()+' xu';
+    if(result)result.innerHTML=`🎉 Trúng <b>ô ${winner+1}</b> — <b>+${reward.toLocaleString('vi-VN')} xu</b>!`;
+    luckySpinning=false;
+    if(btn)btn.disabled=false;
+  },5300);
+}
+
+function showOnline(){
+  $('lobbyExtra').innerHTML=`
+    <div class="online-panel">
+      <h3>🌐 Chơi Online</h3>
+      <button class="btn" onclick="createOnlineRoom()">Tạo phòng</button>
+      <div style="height:8px"></div>
+      <div class="dlc-row">
+        <input id="joinCode" placeholder="Nhập mã phòng">
+        <button class="btn" style="width:auto;margin:0" onclick="joinOnlineRoom()">Vào phòng</button>
+      </div>
+      <div id="onlineMsg" class="msg"></div>
+    </div>`;
+}
+function createOnlineRoom(){
+  let code=Math.random().toString(36).slice(2,8).toUpperCase();
+  localStorage.setItem('tl_online_room_'+code,JSON.stringify({host:user,players:[user]}));
+  $('lobbyExtra').querySelector('.online-panel').insertAdjacentHTML(
+    'beforeend',
+    '<div class="online-code">'+code+'</div><div class="status-online">Đã tạo phòng. Gửi mã này cho người chơi khác.</div>'
+  );
+}
+function joinOnlineRoom(){
+  let code=($('joinCode')?.value||'').trim().toUpperCase();
+  if(!code)return msg('onlineMsg','Nhập mã phòng.');
+  let raw=localStorage.getItem('tl_online_room_'+code);
+  if(!raw)return msg('onlineMsg','Không tìm thấy phòng.');
+  let room=JSON.parse(raw);
+  if(!room.players.includes(user))room.players.push(user);
+  localStorage.setItem('tl_online_room_'+code,JSON.stringify(room));
+  msg('onlineMsg','Đã vào phòng của '+room.host+'.');
+}
+
+function openRoom(){let code=Math.random().toString(36).slice(2,8).toUpperCase();$('modalTitle').textContent='🌐 Phòng online';$('modalBody').innerHTML='<div class="sub">Mã phòng của bạn</div><div class="roomcode">'+code+'</div><div class="sub">Đây là giao diện phòng demo. Muốn nhiều máy chơi thật cần server/WebSocket.</div>';$('modal').style.display='flex'}
+function closeModal(){$('modal').style.display='none'}
+function shuffle(a){for(let i=a.length-1;i;i--){let j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a}
+function deck(){
+  let d=[];
+  for(let r=0;r<13;r++){
+    for(let s of SUITS){
+      d.push({
+        id:(r*4+s.r),
+        rank:RANKS[r],
+        suit:s.s,
+        color:s.r>=2?'red':''
+      });
+    }
+  }
+  return shuffle(d);
+}
+function startBot(){
+  $('lobby').style.display='none';
+  $('game').style.display='block';
+  renderMyAvatar();
+  $('deal').style.display='flex';
+  hands=[[],[],[],[]];
+  selected.clear();
+  last=null;
+  passes=0;
+  passedPlayers.clear();
+  turn=0;
+  roundWinner=-1;
+  gameOn=false;
+
+  // Mỗi lá trong bộ 52 lá có một ID duy nhất, sau khi chia
+  // mỗi lá chỉ thuộc đúng một người.
+  let d=deck();
+  let used=new Set();
+
+  function deal(){
+    if(i>=52){
+      let all=hands.flat();
+      let ids=all.map(c=>c.id);
+      let unique=new Set(ids);
+      let validCounts=hands.every(h=>h.length===13);
+      if(unique.size!==52 || all.length!==52 || !validCounts){
+        console.error('Lỗi chia bài: có lá bị trùng.');
+        $('dealText').textContent='Lỗi chia bài, đang chia lại...';
+        setTimeout(startBot,500);
+        return;
+      }
+
+      $('deal').style.display='none';
+      gameOn=true;
+      render();
+      startTurnTimer();
+      return;
+    }
+
+    let card=d[i];
+    if(!card || used.has(card.id)){
+      console.error('Lá bị trùng khi chia:',card);
+      $('dealText').textContent='Lỗi chia bài, đang chia lại...';
+      setTimeout(startBot,500);
+      return;
+    }
+    used.add(card.id);
+
+    let p=i%4;
+    // Tạo object mới để tuyệt đối không dùng chung reference giữa các tay bài.
+    hands[p].push({...card});
+    i++;
+    $('dealText').textContent='Đang chia bài '+i+'/52';
+    setTimeout(deal,55);
+  }
+
+  let i=0;
+  deal();
+}
+function cardHTML(c){return '<div class="cardface '+c.color+'"><div class="rank">'+c.rank+'</div><div class="suit">'+c.suit+'</div></div>'}
+function renderOtherHands(){
+  for(let p=1;p<4;p++){
+    let el=$('h'+p);
+    if(!el)continue;
+    let count=hands[p].length;
+    el.innerHTML='';
+
+    // Các lá được xếp sát/chồng lên nhau để không che tên hoặc bàn.
+    let cards=document.createElement('div');
+    cards.style.display='flex';
+    cards.style.justifyContent='center';
+    cards.style.alignItems='center';
+    cards.style.width='100%';
+    cards.style.height='36px';
+
+    for(let i=0;i<count;i++){
+      let d=document.createElement('span');
+      d.className='cardback';
+      d.title='Còn '+count+' lá';
+      cards.appendChild(d);
+    }
+
+    let countEl=document.createElement('div');
+    countEl.style.fontSize='11px';
+    countEl.style.color='#b8d8cf';
+    countEl.style.fontWeight='700';
+    countEl.textContent=count+' lá';
+
+    el.appendChild(cards);
+    el.appendChild(countEl);
+  }
+}
+function stopTurnTimer(){
+  if(timerInterval){clearInterval(timerInterval);timerInterval=null;}
+}
+function startTurnTimer(){
+  stopTurnTimer();
+  timerSeconds=60;
+  updateTurnTimers();
+  timerInterval=setInterval(()=>{
+    if(!gameOn)return;
+    timerSeconds--;
+    updateTurnTimers();
+    if(timerSeconds<=0){
+      stopTurnTimer();
+      autoPassOnTimeout();
+    }
+  },1000);
+}
+function updateTurnTimers(){
+  for(let p=0;p<4;p++){
+    let el=$('timer'+p);
+    if(!el)continue;
+    let value=(p===turn&&gameOn)?timerSeconds:'60';
+
+    if(p===0){
+      el.textContent=value;
+      el.classList.toggle('active',p===turn&&gameOn);
+      el.classList.toggle('low',p===turn&&gameOn&&timerSeconds<=10);
+    }else{
+      let span=el.querySelector('span');
+      if(span)span.textContent=value;
+      el.classList.toggle('active',p===turn&&gameOn);
+      el.classList.toggle('low',p===turn&&gameOn&&timerSeconds<=10);
+    }
+  }
+}
+function autoPassOnTimeout(){
+  if(!gameOn)return;
+  // Hết 60 giây được tính như bỏ lượt.
+  if(turn===0){
+    if(!last){
+      // Nếu đang là người mở đầu mà hết giờ, tự bỏ và chuyển Bot.
+      passes++;
+      passedPlayers.add(0);
+      turn=1;
+      render();
+      setTimeout(botTurn,2000+Math.floor(Math.random()*3001));
+      return;
+    }
+    passes++;
+    if(passes>=3){
+      turn=last.by;
+      last=null;
+      passes=0;
+    }else{
+      turn=1;
+    }
+    render();
+    if(turn!==0)setTimeout(botTurn,2000+Math.floor(Math.random()*3001));
+  }
+}
+function render(){
+  renderMyAvatar();
+  renderHand();
+  renderOtherHands();
+  for(let i=0;i<4;i++)$('c'+i).textContent=hands[i].length+' lá';
+  $('turn').textContent=turn===0?'Lượt của bạn':`Lượt Bot ${turn}`;
+
+  if(last){
+    $('played').innerHTML=last.cards.map((c,i)=>
+      '<div class="played-card" style="z-index:'+(i+1)+'">'+
+      cardHTML(c).replace('class="cardface','class="cardface play-anim')+
+      '</div>'
+    ).join('');
+  }else{
+    $('played').innerHTML='';
+  }
+
+  for(let p=0;p<4;p++){
+    let player=document.querySelector('.p'+p);
+    if(!player)continue;
+    let old=player.querySelector('.pass-indicator');
+    if(old)old.remove();
+    if(passedPlayers.has(p)){
+      let pass=document.createElement('div');
+      pass.className='pass-indicator';
+      pass.textContent='Bỏ lượt';
+      player.appendChild(pass);
+    }
+  }
+}
+function renderHand(){
+  let el=$('hand');
+  $('playBtn').style.display=selected.size?'block':'none';
+  el.innerHTML='';
+  let n=hands[0].length;
+  if(!n)return;
+
+  // Khoảng cách vừa đủ để nhìn rõ mặt từng lá nhưng vẫn giống một tay bài ngoài đời.
+  const mobile=window.innerWidth<=650;
+  const cardW=mobile?54:66;
+  const cardH=mobile?80:96;
+  const visible=mobile?27:34;
+  const spread=Math.min(visible, (mobile?300:410)/(Math.max(1,n-1)));
+  const total=spread*(n-1);
+  const maxAngle=mobile?20:23;
+
+  for(let i=0;i<n;i++){
+    const c=hands[0][i];
+    const x=-total/2+i*spread;
+    const middle=(n-1)/2;
+    const normalized=middle?((i-middle)/middle):0;
+    const angle=normalized*maxAngle;
+
+    let d=document.createElement('div');
+    d.className='cardface '+c.color+(selected.has(i)?' selected':'');
+    d.innerHTML='<div class="rank">'+c.rank+'</div><div class="suit">'+c.suit+'</div>';
+    d.style.left='50%';
+    d.style.width=cardW+'px';
+    d.style.height=cardH+'px';
+    d.style.transform=`translateX(calc(-50% + ${x}px)) rotate(${angle}deg)`;
+    d.style.zIndex=i;
+    d.onclick=()=>{
+      if(selected.has(i)) selected.delete(i);
+      else selected.add(i);
+      renderHand();
+    };
+    el.appendChild(d);
+  }
+}
+function sortCards(a){
+  // Thứ tự chất: Bích < Tép < Dô < Cơ
+  return a.slice().sort((x,y)=>
+    RANKS.indexOf(x.rank)-RANKS.indexOf(y.rank) ||
+    SUITS.find(s=>s.s===x.suit).r-SUITS.find(s=>s.s===y.suit).r
+  );
+}
+function typeOf(cards){
+  if(!cards.length)return null;
+  let a=sortCards(cards), ranks=a.map(c=>RANKS.indexOf(c.rank));
+  let same=ranks.every(x=>x===ranks[0]);
+  if(a.length===1)return {t:'single',v:ranks[0]};
+  if(a.length===2&&same)return {t:'pair',v:ranks[0]};
+  if(a.length===3&&same)return {t:'triple',v:ranks[0]};
+  if(a.length===4&&same)return {t:'quad',v:ranks[0]};
+
+  // Đôi thông: từ 2 đôi trở lên, các đôi liên tiếp.
+  if(a.length>=4&&a.length%2===0){
+    let pairs=[];
+    for(let i=0;i<a.length;i+=2){
+      let r=RANKS.indexOf(a[i].rank);
+      if(RANKS.indexOf(a[i+1].rank)!==r)return null;
+      pairs.push(r);
+    }
+    if(pairs.every((v,i)=>i===0||v===pairs[i-1]+1))
+      return {t:'pairstraight',v:pairs[pairs.length-1],len:pairs.length};
+  }
+
+  if(a.length>=3&&new Set(ranks).size===a.length&&ranks.every((v,i)=>i===0||v===ranks[i-1]+1))
+    return {t:'straight',v:ranks[ranks.length-1],len:a.length};
+  return null;
+}
+function canBeat(cards,prev){
+  let a=typeOf(cards);
+  if(!a)return false;
+  if(!prev)return true;
+  let p=prev.type || (prev.cards ? typeOf(prev.cards) : prev);
+  if(!p)return false;
+
+  // Tứ chặt 2; đôi thông từ 3 đôi có thể chặt 2.
+  if(a.t==='quad' && p.t==='single' && p.v===12)return true;
+  if(a.t==='pairstraight' && p.t==='single' && p.v===12 && a.len>=3)return true;
+
+  if(a.t!==p.t)return false;
+  if(a.t==='straight' && a.len!==p.len)return false;
+  if(a.t==='pairstraight' && a.len!==p.len)return false;
+
+  if(a.t==='single' && a.v===p.v){
+    let newSuit=SUITS.find(s=>s.s===cards[0].suit)?.r ?? -1;
+    let prevSuit=SUITS.find(s=>s.s===prev.cards[0].suit)?.r ?? -1;
+    return newSuit>prevSuit;
+  }
+  return a.v>p.v;
+}
+function playSelected(){if(!gameOn||turn!==0||!selected.size)return;let cards=[...selected].sort((a,b)=>a-b).map(i=>hands[0][i]);if(!canBeat(cards,last)){msg('hint','Bộ bài không hợp lệ hoặc chưa lớn hơn bộ trước.');return}hands[0]=hands[0].filter((_,i)=>!selected.has(i));selected.clear();last={cards,type:typeOf(cards),by:0};passes=0;if(!hands[0].length){roundWinner=0;return endGame('Bạn thắng! 🎉');}turn=1;render();startTurnTimer();setTimeout(botTurn,2000+Math.floor(Math.random()*3001))}
+function passTurn(){
+  if(!gameOn||turn!==0)return;
+  if(!last){
+    msg('hint','Bạn phải đánh ở lượt mở đầu.');
+    return;
+  }
+
+  passes++;
+  passedPlayers.add(0);
+  turn=1;
+
+  // Nếu bạn là người thứ ba bỏ lượt sau lá vừa đánh,
+  // người đã đánh lá đó được đánh tiếp.
+  if(passes>=3){
+    turn=last.by;
+    last=null;
+    passes=0;
+    render();
+    if(turn!==0)setTimeout(botTurn,2000+Math.floor(Math.random()*3001));
+    return;
+  }
+
+  render();
+  startTurnTimer();
+  setTimeout(botTurn,2000+Math.floor(Math.random()*3001));
+}
+function botTurn(){
+  if(!gameOn)return;
+  startTurnTimer();
+
+  let h=hands[turn];
+  let choice=findBotMove(h,last);
+
+  if(choice.length){
+    // Bot đánh được thì đánh.
+    for(let c of choice){
+      let idx=h.indexOf(c);
+      if(idx!==-1)h.splice(idx,1);
+    }
+    last={cards:choice,type:typeOf(choice),by:turn};
+    passes=0;
+
+    if(!h.length){roundWinner=turn;return endGame('Bot '+turn+' thắng! 🤖');}
+  }else{
+    // Bot không đè được bài trước thì bỏ lượt.
+    passes++;
+    passedPlayers.add(turn);
+  }
+
+  turn=(turn+1)%4;
+
+  // Cả 3 người còn lại đều bỏ lượt -> vòng mới, người vừa đánh cuối được mở.
+  if(passes>=3&&last){
+    // Ba người còn lại đều bỏ lượt: người vừa đánh được mở lượt mới.
+    turn=last.by;
+    last=null;
+    passes=0;
+    passedPlayers.clear();
+  }
+
+  render();
+
+  if(turn!==0)setTimeout(botTurn,2000+Math.floor(Math.random()*3001));
+}
+function findBotMove(h,prev){
+  let s=sortCards(h);
+  if(!prev)return [s[0]];
+
+  let need=prev.type||typeOf(prev.cards);
+  if(!need)return [];
+
+  if(need.t==='single'){
+    for(let c of s) if(canBeat([c],prev))return [c];
+
+    // Nếu là 2 thì tìm tứ hoặc đôi thông đủ 3 đôi để chặt.
+    if(need.v===12){
+      for(let r=0;r<13;r++){
+        let x=s.filter(c=>RANKS.indexOf(c.rank)===r);
+        if(x.length>=4)return x.slice(0,4);
+      }
+      for(let start=0;start<11;start++){
+        let x=[];
+        for(let r=start;r<13;r++){
+          let pair=s.filter(c=>RANKS.indexOf(c.rank)===r);
+          if(pair.length<2)break;
+          x.push(pair[0],pair[1]);
+          if(x.length>=6)return x.slice(0,6);
+        }
+      }
+    }
+    return [];
+  }
+
+  if(need.t==='pair'){
+    for(let r=0;r<13;r++){
+      let x=s.filter(c=>RANKS.indexOf(c.rank)===r);
+      if(x.length>=2&&canBeat(x.slice(0,2),prev))return x.slice(0,2);
+    }
+    return [];
+  }
+
+  if(need.t==='triple'){
+    for(let r=0;r<13;r++){
+      let x=s.filter(c=>RANKS.indexOf(c.rank)===r);
+      if(x.length>=3&&canBeat(x.slice(0,3),prev))return x.slice(0,3);
+    }
+    return [];
+  }
+
+  if(need.t==='quad'){
+    for(let r=0;r<13;r++){
+      let x=s.filter(c=>RANKS.indexOf(c.rank)===r);
+      if(x.length>=4&&canBeat(x.slice(0,4),prev))return x.slice(0,4);
+    }
+    return [];
+  }
+
+  if(need.t==='pairstraight'){
+    for(let start=0;start<13;start++){
+      let x=[];
+      for(let r=start;r<13;r++){
+        let pair=s.filter(c=>RANKS.indexOf(c.rank)===r);
+        if(pair.length<2)break;
+        x.push(pair[0],pair[1]);
+        if(x.length===need.len*2&&canBeat(x,prev))return x;
+      }
+    }
+    return [];
+  }
+
+  if(need.t==='straight'){
+    for(let i=0;i<s.length;i++){
+      let x=[s[i]];
+      for(let j=i+1;j<s.length&&x.length<need.len;j++){
+        if(RANKS.indexOf(s[j].rank)===RANKS.indexOf(x[x.length-1].rank)+1)x.push(s[j]);
+      }
+      if(x.length===need.len&&canBeat(x,prev))return x;
+    }
+  }
+  return [];
+}
+function endGame(t){
+  stopTurnTimer();
+  gameOn=false;
+  $('turn').textContent=t;
+  $('played').innerHTML='';
+
+  let isUserWin=(roundWinner===0);
+  if(isUserWin){
+    addCoins(100);
+    $('modalTitle').textContent='🏆 WIN!';
+    $('modalBody').innerHTML=
+      '<div style="text-align:center;padding:8px 0 14px">'+
+      '<div style="font-size:56px">🎉</div>'+
+      '<div style="font-size:24px;font-weight:900;color:#5ff0b5">Bạn đã thắng!</div>'+
+      '<div style="margin-top:10px;color:#ffd45b;font-size:20px;font-weight:900">+100 🪙 xu</div>'+
+      '<div style="margin-top:8px;color:#a9c9c0">Số dư: '+getCoins()+' xu</div>'+
+      '</div>'+
+      '<button class="btn" onclick="closeWinAndLobby()">Về sảnh</button>';
+  }else{
+    $('modalTitle').textContent='🤖 KẾT THÚC VÁN';
+    $('modalBody').innerHTML=
+      '<div style="text-align:center;padding:8px 0 14px">'+
+      '<div style="font-size:48px">🤖</div>'+
+      '<div style="font-size:22px;font-weight:900">'+t+'</div>'+
+      '<div style="margin-top:8px;color:#a9c9c0">Bạn có '+getCoins()+' xu</div>'+
+      '</div>'+
+      '<button class="btn" onclick="closeWinAndLobby()">Về sảnh</button>';
+  }
+  $('modal').style.display='flex';
+}
+function closeWinAndLobby(){
+  closeModal();
+  backLobby();
+}
+function backLobby(){stopTurnTimer();$('game').style.display='none';$('lobby').style.display='block';gameOn=false;if($('lobbyExtra'))$('lobbyExtra').innerHTML=''}
+window.addEventListener('load',()=>{
+  let n=localStorage.getItem('tl_session');
+  if(n) enter(n);
+  else {
+    $('auth').style.display='flex';
+    $('app').style.display='none';
+  }
+})
+</script>
+</body>
+</html>
+<style>
+.lobby-user{display:inline-flex!important;align-items:center!important;gap:6px!important;white-space:nowrap!important}
+.header-avatar{width:32px!important;height:32px!important;border-radius:50%!important;object-fit:cover!important;display:inline-block!important;vertical-align:middle!important;border:2px solid #7bd5b8!important;background:#153b31}
+.fallback-avatar{display:grid!important;place-items:center!important}
+</style>
