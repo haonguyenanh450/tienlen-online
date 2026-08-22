@@ -237,11 +237,6 @@ input{width:100%;padding:13px 15px;margin:7px 0;border-radius:12px;border:1px so
 
 
 </style>
-<style>
-.lobby-user{display:inline-flex!important;align-items:center!important;gap:6px!important;white-space:nowrap!important}
-.header-avatar{width:32px!important;height:32px!important;border-radius:50%!important;object-fit:cover!important;display:inline-block!important;vertical-align:middle!important;border:2px solid #7bd5b8!important;background:#153b31}
-.fallback-avatar{display:grid!important;place-items:center!important}
-</style>
 </head>
 <body>
 <section id="auth" class="screen">
@@ -1038,27 +1033,38 @@ function deck(){
   return shuffle(d);
 }
 function startBot(){
-  // Bot mode is fully isolated from online mode.
-  try{ stopTurnTimer(); }catch(e){}
-  try{ stopOnlinePoll?.(); }catch(e){}
-  if(typeof onlineSocket!=='undefined' && onlineSocket){try{onlineSocket.close()}catch(e){} onlineSocket=null}
-  if(typeof onlineRoomCode!=='undefined') onlineRoomCode='';
-  if(typeof onlinePlayerId!=='undefined') onlinePlayerId='';
-  if(typeof onlineSeat!=='undefined') onlineSeat=-1;
-  if(typeof onlineRoomData!=='undefined') onlineRoomData=null;
-  gameMode='bot'; gameOn=false; turn=0; last=null; passes=0; roundWinner=-1;
-  selected.clear(); passedPlayers.clear();
-  hands=[[],[],[],[]];
-  $('lobby').style.display='none'; $('game').style.display='block';
+  // Chế độ Bot là một ván hoàn toàn độc lập với Online.
+  stopOnlinePoll?.();
+  if(onlineSocket){try{onlineSocket.close()}catch(e){} onlineSocket=null}
+  onlineRoomCode=''; onlinePlayerId=''; onlineSeat=-1; onlineRoomData=null;
+  gameMode='bot';
+  $('lobby').style.display='none';
+  $('game').style.display='block';
   renderMyAvatar();
-  $('deal').style.display='flex'; $('dealText').textContent='Đang chia bài...';
+  selected.clear(); last=null; passes=0; passedPlayers.clear(); roundWinner=-1; turn=0; gameOn=false;
+  hands=[[],[],[],[]];
+  $('hand').innerHTML='';
+  $('deal').style.display='flex';
+  $('dealText').textContent='Đang chia bài...';
+
+  // Chia đúng 52 lá, mỗi ghế đúng 13 lá. Không dùng chung object lá bài.
   const d=deck();
-  for(let i=0;i<52;i++) hands[i%4].push({...d[i]});
-  // Render the real 13-card hand immediately; the overlay is only a visual effect.
-  gameOn=true; turn=0; selected.clear();
-  render();
-  // Keep the dealing visual brief, then remove it unconditionally.
-  setTimeout(()=>{ $('deal').style.display='none'; $('turn').textContent='Lượt của bạn'; renderHand(); startTurnTimer(); },500);
+  for(let i=0;i<d.length;i++) hands[i%4].push({...d[i]});
+
+  // Hiệu ứng chia bài ngắn, sau đó chắc chắn chuyển sang trạng thái chơi.
+  let shown=0;
+  const dealTimer=setInterval(()=>{
+    shown++;
+    $('dealText').textContent='Đang chia bài '+Math.min(shown,52)+'/52';
+    if(shown>=52){
+      clearInterval(dealTimer);
+      $('deal').style.display='none';
+      gameOn=true;
+      selected.clear();
+      render();
+      startTurnTimer();
+    }
+  },18);
 }
 function cardHTML(c){return '<div class="cardface '+c.color+'"><div class="rank">'+c.rank+'</div><div class="suit">'+c.suit+'</div></div>'}
 function renderOtherHands(){
@@ -1523,6 +1529,10 @@ function verifiedHTML(n){
   return n==='Hao123'?'<span class="verified-badge" title="Đã xác minh">✓</span>':'';
 }
 function applyServerProfile(profile){
+  profile = profile?.profile || profile;
+  if(!profile || !profile.name){
+    throw new Error('Máy chủ không trả về thông tin tài khoản hợp lệ.');
+  }
   serverProfile=profile;
   user=profile.name;
   if(profile.avatar) localStorage.setItem('tl_avatar_'+user,profile.avatar);
@@ -1896,15 +1906,10 @@ function render(){
   }
 }
 </script>
-
-<script>
-/* FINAL GAME STATE FIX: Bot and Online are isolated. */
-(function(){
-  // Make the lobby button use the same robust Bot starter.
-  window.startBot = startBot;
-  window.renderHand = renderHand;
-})();
-</script>
 </body>
 </html>
-
+<style>
+.lobby-user{display:inline-flex!important;align-items:center!important;gap:6px!important;white-space:nowrap!important}
+.header-avatar{width:32px!important;height:32px!important;border-radius:50%!important;object-fit:cover!important;display:inline-block!important;vertical-align:middle!important;border:2px solid #7bd5b8!important;background:#153b31}
+.fallback-avatar{display:grid!important;place-items:center!important}
+</style>
