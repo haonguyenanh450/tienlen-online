@@ -289,11 +289,9 @@ input{width:100%;padding:13px 15px;margin:7px 0;border-radius:12px;border:1px so
 
 <div id="modal" class="modal"><div class="card"><h2 id="modalTitle"></h2><div id="modalBody"></div><button class="btn" onclick="closeModal()">Đóng</button></div></div>
 
-<script src="config.js"></script>
 <script>
 const SUITS=[{s:'♠',r:0},{s:'♣',r:1},{s:'♦',r:2},{s:'♥',r:3}], RANKS=['3','4','5','6','7','8','9','10','J','Q','K','A','2'];
-let user='',hands=[],selected=new Set(),turn=0,gameOn=false,last=null,passes=0,roundWinner=-1,timerSeconds=60,timerInterval=null,passedPlayers=new Set(),tablePlays=[];
-let gameMode='lobby'; // 'bot' | 'online' | 'lobby'
+let user='',hands=[],selected=new Set(),turn=0,gameOn=false,last=null,passes=0,roundWinner=-1,timerSeconds=60,timerInterval=null,passedPlayers=new Set();
 const $=id=>document.getElementById(id);
 
 function previewAvatar(e){
@@ -1033,53 +1031,64 @@ function deck(){
   return shuffle(d);
 }
 function startBot(){
-  // FIX BOT: khởi tạo ván trước, tuyệt đối không để lỗi avatar/online chặn việc hiện bài.
-  gameMode='bot';
-  try{ if(typeof stopOnlinePoll==='function') stopOnlinePoll(); }catch(e){}
-  try{ if(typeof onlineSocket!=='undefined' && onlineSocket){onlineSocket.close();onlineSocket=null;} }catch(e){}
-  try{ onlineRoomCode=''; onlinePlayerId=''; onlineSeat=-1; onlineRoomData=null; }catch(e){}
-
-  const lobby=$('lobby'), game=$('game'), turnEl=$('turn'), deal=$('deal'), handEl=$('hand');
-  if(lobby) lobby.style.display='none';
-  if(game) game.style.display='block';
-
-  // Luôn tạo một bộ bài mới 52 lá, chia 13 lá/người.
+  $('lobby').style.display='none';
+  $('game').style.display='block';
+  renderMyAvatar();
+  $('deal').style.display='flex';
   hands=[[],[],[],[]];
-  selected=new Set(); last=null; tablePlays=[]; passes=0; roundWinner=-1; turn=0; gameOn=true;
-  if(typeof passedPlayers!=='undefined') passedPlayers=new Set();
-  const d=deck();
-  for(let i=0;i<52;i++) hands[i%4].push({...d[i]});
+  selected.clear();
+  last=null;
+  passes=0;
+  passedPlayers.clear();
+  turn=0;
+  roundWinner=-1;
+  gameOn=false;
 
-  // Cập nhật số lá ngay cả khi một hàm render phụ gặp lỗi.
-  for(let i=0;i<4;i++){
-    const c=$('c'+i); if(c)c.textContent=hands[i].length+' lá';
+  // Mỗi lá trong bộ 52 lá có một ID duy nhất, sau khi chia
+  // mỗi lá chỉ thuộc đúng một người.
+  let d=deck();
+  let used=new Set();
+
+  function deal(){
+    if(i>=52){
+      let all=hands.flat();
+      let ids=all.map(c=>c.id);
+      let unique=new Set(ids);
+      let validCounts=hands.every(h=>h.length===13);
+      if(unique.size!==52 || all.length!==52 || !validCounts){
+        console.error('Lỗi chia bài: có lá bị trùng.');
+        $('dealText').textContent='Lỗi chia bài, đang chia lại...';
+        setTimeout(startBot,500);
+        return;
+      }
+
+      $('deal').style.display='none';
+      gameOn=true;
+      render();
+      startTurnTimer();
+      return;
+    }
+
+    let card=d[i];
+    if(!card || used.has(card.id)){
+      console.error('Lá bị trùng khi chia:',card);
+      $('dealText').textContent='Lỗi chia bài, đang chia lại...';
+      setTimeout(startBot,500);
+      return;
+    }
+    used.add(card.id);
+
+    let p=i%4;
+    // Tạo object mới để tuyệt đối không dùng chung reference giữa các tay bài.
+    hands[p].push({...card});
+    i++;
+    $('dealText').textContent='Đang chia bài '+i+'/52';
+    setTimeout(deal,55);
   }
 
-  // Tắt hoàn toàn trạng thái chia bài.
-  if(deal){deal.style.display='none';deal.style.visibility='hidden';deal.setAttribute('aria-hidden','true');}
-  const dealText=$('dealText'); if(dealText)dealText.textContent='';
-  if(turnEl)turnEl.textContent='Lượt của bạn';
-
-  // Render từng phần độc lập: lỗi một phần không được làm kẹt cả ván.
-  try{renderHand();}catch(e){console.error('renderHand:',e)}
-  try{renderOtherHands();}catch(e){console.error('renderOtherHands:',e)}
-  try{render();}catch(e){console.error('render:',e)}
-  try{renderMyAvatar();}catch(e){console.error('renderMyAvatar:',e)}
-
-  // Ép trạng thái cuối sau mọi render để không thể quay lại "Đang chia bài...".
-  if(deal){deal.style.display='none';deal.style.visibility='hidden';}
-  if(turnEl)turnEl.textContent='Lượt của bạn';
-  if(handEl && !handEl.children.length) try{renderHand();}catch(e){}
-  try{startTurnTimer();}catch(e){}
-
-  // Một lần xác nhận sau khi trình duyệt hoàn tất layout.
-  setTimeout(()=>{
-    const d=$('deal'), t=$('turn');
-    if(d){d.style.display='none';d.style.visibility='hidden';}
-    if(t && gameOn) t.textContent=turn===0?'Lượt của bạn':`Lượt Bot ${turn}`;
-  },50);
+  let i=0;
+  deal();
 }
-
 function cardHTML(c){return '<div class="cardface '+c.color+'"><div class="rank">'+c.rank+'</div><div class="suit">'+c.suit+'</div></div>'}
 function renderOtherHands(){
   for(let p=1;p<4;p++){
@@ -1180,12 +1189,15 @@ function render(){
   for(let i=0;i<4;i++)$('c'+i).textContent=hands[i].length+' lá';
   $('turn').textContent=turn===0?'Lượt của bạn':`Lượt Bot ${turn}`;
 
-  const pile=(gameMode==='bot'?tablePlays:(last?[{cards:last.cards,by:last.by}]:[]));
-  $('played').innerHTML=pile.map((play,pi)=>play.cards.map((c,i)=>
-    '<div class=\"played-card\" style=\"z-index:'+(pi*10+i+1)+'\" title=\"'+(play.by===0?'Bạn':'Bot '+play.by)+'\">'+
-    cardHTML(c).replace('class=\"cardface','class=\"cardface play-anim\"')+
-    '</div>'
-  ).join('')).join('');
+  if(last){
+    $('played').innerHTML=last.cards.map((c,i)=>
+      '<div class="played-card" style="z-index:'+(i+1)+'">'+
+      cardHTML(c).replace('class="cardface','class="cardface play-anim')+
+      '</div>'
+    ).join('');
+  }else{
+    $('played').innerHTML='';
+  }
 
   for(let p=0;p<4;p++){
     let player=document.querySelector('.p'+p);
@@ -1202,10 +1214,9 @@ function render(){
 }
 function renderHand(){
   let el=$('hand');
-  $('playBtn').style.display=(gameOn&&turn===0)?'block':'none'; $('playBtn').disabled=false;
+  $('playBtn').style.display=selected.size?'block':'none';
   el.innerHTML='';
-  const handSeat=(gameMode==='online'&&onlineRoomData&&gameOn&&onlineSeat>=0)?onlineSeat:0;
-  let n=(hands[handSeat]||[]).length;
+  let n=hands[0].length;
   if(!n)return;
 
   // Khoảng cách vừa đủ để nhìn rõ mặt từng lá nhưng vẫn giống một tay bài ngoài đời.
@@ -1218,7 +1229,7 @@ function renderHand(){
   const maxAngle=mobile?20:23;
 
   for(let i=0;i<n;i++){
-    const c=hands[handSeat][i];
+    const c=hands[0][i];
     const x=-total/2+i*spread;
     const middle=(n-1)/2;
     const normalized=middle?((i-middle)/middle):0;
@@ -1233,7 +1244,6 @@ function renderHand(){
     d.style.transform=`translateX(calc(-50% + ${x}px)) rotate(${angle}deg)`;
     d.style.zIndex=i;
     d.onclick=()=>{
-      if(!gameOn || turn!==0)return;
       if(selected.has(i)) selected.delete(i);
       else selected.add(i);
       renderHand();
@@ -1295,31 +1305,7 @@ function canBeat(cards,prev){
   }
   return a.v>p.v;
 }
-function playSelected(){
-  if(gameMode==='bot'){
-    if(!gameOn){msg('hint','Ván chưa bắt đầu.');return;}
-    if(turn!==0){msg('hint','Chưa tới lượt bạn.');return;}
-    const indexes=[...selected].filter(i=>Number.isInteger(i)&&i>=0&&i<hands[0].length).sort((a,b)=>a-b);
-    if(!indexes.length){msg('hint','Hãy chọn ít nhất 1 lá bài.');return;}
-    const cards=indexes.map(i=>hands[0][i]);
-    if(!canBeat(cards,last)){msg('hint',last?'Bộ bài không hợp lệ hoặc chưa lớn hơn bộ trước.':'Bộ bài bạn chọn không hợp lệ.');return;}
-    indexes.slice().reverse().forEach(i=>hands[0].splice(i,1));
-    selected.clear();
-    last={cards:cards.slice(),type:typeOf(cards),by:0};
-    tablePlays.push({cards:cards.slice(),by:0});
-    passes=0;passedPlayers.clear();
-    render();
-    if(!hands[0].length){roundWinner=0;endGame('Bạn thắng! 🎉');return;}
-    turn=1;
-    render();
-    startTurnTimer();
-    setTimeout(botTurn,2000+Math.floor(Math.random()*3001));
-    return;
-  }
-  if(gameMode!=='online'||!gameOn||turn!==onlineSeat){return;}
-  const ids=[...selected].sort((a,b)=>a-b).map(i=>hands[onlineSeat][i].id);
-  try{const r=await api('/room/play',{method:'POST',body:JSON.stringify({code:onlineRoomCode,playerId:onlinePlayerId,cardIds:ids})});selected.clear();onlineRoomData=r;startNetworkGame(r)}catch(e){msg('hint',e.message)}
-}
+function playSelected(){if(!gameOn||turn!==0||!selected.size)return;let cards=[...selected].sort((a,b)=>a-b).map(i=>hands[0][i]);if(!canBeat(cards,last)){msg('hint','Bộ bài không hợp lệ hoặc chưa lớn hơn bộ trước.');return}hands[0]=hands[0].filter((_,i)=>!selected.has(i));selected.clear();last={cards,type:typeOf(cards),by:0};passes=0;if(!hands[0].length){roundWinner=0;return endGame('Bạn thắng! 🎉');}turn=1;render();startTurnTimer();setTimeout(botTurn,2000+Math.floor(Math.random()*3001))}
 function passTurn(){
   if(!gameOn||turn!==0)return;
   if(!last){
@@ -1347,25 +1333,41 @@ function passTurn(){
   setTimeout(botTurn,2000+Math.floor(Math.random()*3001));
 }
 function botTurn(){
-  if(!gameOn||gameMode!=='bot'||turn===0)return;
+  if(!gameOn)return;
   startTurnTimer();
-  const seat=turn;
-  const h=hands[seat]||[];
-  const choice=findBotMove(h,last);
+
+  let h=hands[turn];
+  let choice=findBotMove(h,last);
+
   if(choice.length){
-    for(const c of choice){const idx=h.indexOf(c);if(idx!==-1)h.splice(idx,1);}
-    last={cards:choice.slice(),type:typeOf(choice),by:seat};
-    tablePlays.push({cards:choice.slice(),by:seat});
-    passes=0;passedPlayers.clear();
-    if(!h.length){roundWinner=seat;render();endGame('Bot '+seat+' thắng! 🤖');return;}
+    // Bot đánh được thì đánh.
+    for(let c of choice){
+      let idx=h.indexOf(c);
+      if(idx!==-1)h.splice(idx,1);
+    }
+    last={cards:choice,type:typeOf(choice),by:turn};
+    passes=0;
+
+    if(!h.length){roundWinner=turn;return endGame('Bot '+turn+' thắng! 🤖');}
   }else{
-    passes++;passedPlayers.add(seat);
+    // Bot không đè được bài trước thì bỏ lượt.
+    passes++;
+    passedPlayers.add(turn);
   }
-  turn=(seat+1)%4;
+
+  turn=(turn+1)%4;
+
+  // Cả 3 người còn lại đều bỏ lượt -> vòng mới, người vừa đánh cuối được mở.
   if(passes>=3&&last){
-    turn=last.by;last=null;passes=0;passedPlayers.clear();tablePlays=[];
+    // Ba người còn lại đều bỏ lượt: người vừa đánh được mở lượt mới.
+    turn=last.by;
+    last=null;
+    passes=0;
+    passedPlayers.clear();
   }
+
   render();
+
   if(turn!==0)setTimeout(botTurn,2000+Math.floor(Math.random()*3001));
 }
 function findBotMove(h,prev){
@@ -1479,23 +1481,7 @@ function closeWinAndLobby(){
   closeModal();
   backLobby();
 }
-function backLobby(){
-  stopTurnTimer();
-  stopOnlinePoll?.();
-  onlineRoomCode=''; onlinePlayerId=''; onlineSeat=-1; onlineRoomData=null;
-  gameMode='lobby';
-  $('game').style.display='none';$('lobby').style.display='block';gameOn=false;
-  // Trả giao diện về đúng tên Bot mặc định khi rời ván online.
-  for(let p=1;p<4;p++){
-    const el=document.querySelector('.p'+p);
-    if(!el)continue;
-    const badge=el.querySelector('.online-name-badge'); if(badge)badge.remove();
-    const av=el.querySelector('.avatar'); if(av)av.innerHTML='🤖';
-    const textNodes=[...el.childNodes].filter(n=>n.nodeType===3);
-    if(textNodes.length)textNodes[textNodes.length-1].textContent='Bot '+p;
-  }
-  if($('lobbyExtra'))$('lobbyExtra').innerHTML='';
-}
+function backLobby(){stopTurnTimer();$('game').style.display='none';$('lobby').style.display='block';gameOn=false;if($('lobbyExtra'))$('lobbyExtra').innerHTML=''}
 window.addEventListener('load',()=>{
   let n=localStorage.getItem('tl_session');
   if(n) enter(n);
@@ -1504,389 +1490,6 @@ window.addEventListener('load',()=>{
     $('app').style.display='none';
   }
 })
-</script>
-
-<style>
-.online-panel .room-head{display:flex;justify-content:space-between;align-items:center;gap:10px}
-.online-panel .players{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin:14px 0}
-.online-panel .slot{padding:12px;border:1px solid #315c50;border-radius:10px;background:#102f28;text-align:left;min-height:46px}
-.online-panel .slot.ready{border-color:#20b879}
-.online-panel .players .verified-badge{margin-left:3px}
-</style>
-
-<script>
-/* ===== ONLINE/CROSS-DEVICE V2 =====
-   Backend: EdgeOne Makers Functions + KV + Blob.
-   Set API_BASE to your same-domain /api endpoint.
-*/
-const API_BASE=(window.TL_API_BASE||'/api').replace(/\/$/,'');
-let serverProfile=null;
-let apiToken='';
-let onlineSeat=-1;
-let onlinePollTimer=null;
-let onlineRoomData=null;
-
-async function api(path, options={}){
-  const res=await fetch(API_BASE+path,{
-    ...options,
-    headers:{'Content-Type':'application/json',...(options.headers||{})}
-  });
-  let data=null;
-  try{data=await res.json()}catch(e){}
-  if(!res.ok) throw new Error(data?.message||'Máy chủ trả về lỗi '+res.status);
-  return data;
-}
-async function hashText(s){
-  const b=new TextEncoder().encode(s);
-  const d=await crypto.subtle.digest('SHA-256',b);
-  return [...new Uint8Array(d)].map(x=>x.toString(16).padStart(2,'0')).join('');
-}
-function safeAvatarHTML(url, cls){
-  if(!url)return '<div class="'+cls+'" style="display:grid;place-items:center">👤</div>';
-  return '<img class="'+cls+'" src="'+String(url).replace(/"/g,'&quot;')+'" alt="Avatar">';
-}
-function verifiedHTML(n){
-  return n==='Hao123'?'<span class="verified-badge" title="Đã xác minh">✓</span>':'';
-}
-function applyServerProfile(profile){
-  serverProfile=profile;
-  user=profile.name;
-  if(profile.avatar) localStorage.setItem('tl_avatar_'+user,profile.avatar);
-  localStorage.setItem('tl_session',user);
-  renderCoins();
-  renderLobbyAvatar();
-  renderMyAvatar();
-}
-function renderLobbyAvatar(){
-  if(!user||!$('who'))return;
-  const a=serverProfile?.avatar||localStorage.getItem('tl_avatar_'+user);
-  $('who').innerHTML=(a
-    ? '<img class="header-avatar" src="'+a.replace(/"/g,'&quot;')+'" alt="Avatar">'
-    : '<span class="header-avatar fallback-avatar">👤</span>')+
-    '<span>'+user+'</span>'+verifiedHTML(user);
-}
-function renderMyAvatar(){
-  const el=document.querySelector('.p0 .avatar'); if(!el)return;
-  const a=serverProfile?.avatar||localStorage.getItem('tl_avatar_'+user);
-  el.innerHTML=a?'<img src="'+a.replace(/"/g,'&quot;')+'" alt="Avatar" style="width:100%;height:100%;object-fit:cover;border-radius:50%;display:block;">':'🙂';
-}
-function getCoins(){return Number(serverProfile?.coins??localStorage.getItem('tl_coins_'+user)??0)}
-function setCoins(v){
-  v=Math.max(0,Math.floor(Number(v)||0));
-  if(serverProfile)serverProfile.coins=v;
-  localStorage.setItem('tl_coins_'+user,String(v));
-  renderCoins();
-}
-async function syncProfile(){
-  if(!user)return;
-  try{
-    const p=await api('/auth/profile?name='+encodeURIComponent(user));
-    applyServerProfile(p);
-  }catch(e){}
-}
-function renderCoins(){
-  if($('coins'))$('coins').textContent='🪙 '+getCoins()+' xu';
-  if($('coinBalance'))$('coinBalance').textContent='🪙 '+getCoins()+' xu';
-  if($('luckyBalance'))$('luckyBalance').textContent='Số dư: 🪙 '+getCoins()+' xu';
-}
-async function addCoins(v){
-  try{
-    const p=await api('/auth/coins',{
-      method:'POST',body:JSON.stringify({name:user,delta:Number(v)})
-    });
-    applyServerProfile(p);
-  }catch(e){
-    setCoins(getCoins()+Number(v));
-  }
-}
-async function uploadAvatarToServer(dataUrl){
-  if(!user||!dataUrl)return;
-  try{
-    const p=await api('/auth/avatar',{method:'POST',body:JSON.stringify({name:user,avatar:dataUrl})});
-    applyServerProfile(p);
-  }catch(e){msg('authMsg',e.message)}
-}
-function previewAvatar(e){
-  const file=e.target.files&&e.target.files[0]; if(!file)return;
-  if(!file.type.startsWith('image/'))return msg('authMsg','Vui lòng chọn một file ảnh.');
-  if(file.size>700000)return msg('authMsg','Ảnh avatar tối đa 700 KB.');
-  const reader=new FileReader();
-  reader.onload=async()=>{
-    $('avatarPreview').src=reader.result;
-    if(user)await uploadAvatarToServer(reader.result);
-  };
-  reader.readAsDataURL(file);
-}
-async function register(){
-  const n=$('name').value.trim(),p=$('pass').value;
-  if(n.length<4)return msg('authMsg','Tên tài khoản phải có ít nhất 4 ký tự.');
-  if(p.length<4)return msg('authMsg','Mật khẩu phải có ít nhất 4 ký tự.');
-  try{
-    const avatar=$('avatarPreview')?.src?.startsWith('data:image/')?$('avatarPreview').src:'';
-    const r=await api('/auth/register',{method:'POST',body:JSON.stringify({name:n,password:p,avatar})});
-    applyServerProfile(r.profile);
-    enter(n);
-  }catch(e){msg('authMsg',e.message)}
-}
-async function login(){
-  const n=$('name').value.trim(),p=$('pass').value;
-  if(n.length<4)return msg('authMsg','Tên tài khoản phải có ít nhất 4 ký tự.');
-  if(p.length<4)return msg('authMsg','Mật khẩu phải có ít nhất 4 ký tự.');
-  try{
-    const r=await api('/auth/login',{method:'POST',body:JSON.stringify({name:n,password:p})});
-    applyServerProfile(r.profile);
-    enter(n);
-  }catch(e){msg('authMsg',e.message)}
-}
-async function enter(n){
-  user=n;
-  $('auth').style.display='none';$('app').style.display='block';
-  try{
-    const p=await api('/auth/profile?name='+encodeURIComponent(n));
-    applyServerProfile(p);
-  }catch(e){}
-  renderLobbyAvatar();loadAvatarForUser(n);renderMyAvatar();renderCoins();
-}
-async function logout(){
-  stopOnlinePoll();
-  if(onlineRoomCode&&onlinePlayerId){
-    try{await api('/room/leave',{method:'POST',body:JSON.stringify({code:onlineRoomCode,playerId:onlinePlayerId})})}catch(e){}
-  }
-  onlineRoomCode='';onlinePlayerId='';onlineSeat=-1;onlineRoomData=null;
-  localStorage.removeItem('tl_session');
-  gameOn=false;$('app').style.display='none';$('auth').style.display='flex';
-  $('name').value='';$('pass').value='';clearAvatarPreview();$('authMsg').textContent='';
-  $('lobby').style.display='block';$('game').style.display='none';
-}
-
-/* ----- friends are stored on the server, not localStorage ----- */
-async function friendRequest(action,name){
-  return api('/friends/'+action,{method:'POST',body:JSON.stringify({from:user,to:name})});
-}
-function friendAvatar(n,avatar){
-  return avatar?safeAvatarHTML(avatar,'friend-avatar'):'<div class="friend-avatar" style="display:grid;place-items:center">👤</div>';
-}
-async function showFriends(){
-  $('lobbyExtra').innerHTML=`
-  <div class="friends-panel">
-    <div class="friends-head"><h3>👥 Bạn bè</h3><span class="small">Đồng bộ giữa mọi thiết bị</span></div>
-    <div class="friend-search"><input id="friendSearch" placeholder="Nhập tên tài khoản để tìm..."><button class="btn" style="width:auto" onclick="sendFriendRequest($('friendSearch').value)">➕ Kết bạn</button></div>
-    <div id="friendMsg" class="friend-msg"></div><div id="friendList" class="friend-list">Đang tải...</div>
-  </div>`;
-  await renderFriends();
-}
-async function sendFriendRequest(n){
-  n=(n||'').trim();
-  if(!n||n===user)return msg('friendMsg','❌ Tên tài khoản không hợp lệ.');
-  try{await friendRequest('request',n);msg('friendMsg','✅ Đã gửi lời mời kết bạn tới '+n+'.');await renderFriends()}
-  catch(e){msg('friendMsg','❌ '+e.message)}
-}
-async function acceptFriend(n){
-  try{await friendRequest('accept',n);await renderFriends();msg('friendMsg','🎉 Đã kết bạn với '+n+'!')}catch(e){msg('friendMsg',e.message)}
-}
-async function declineFriend(n){
-  try{await friendRequest('decline',n);await renderFriends()}catch(e){msg('friendMsg',e.message)}
-}
-async function removeFriend(n){
-  try{await friendRequest('remove',n);await renderFriends()}catch(e){msg('friendMsg',e.message)}
-}
-async function renderFriends(){
-  const list=$('friendList');if(!list)return;
-  try{
-    const d=await api('/friends/list?name='+encodeURIComponent(user));
-    let html='';
-    (d.received||[]).forEach(x=>html+=`<div class="friend-card">${friendAvatar(x.avatar,x.avatar)}<div class="friend-info"><div class="friend-name">${x.name} ${verifiedHTML(x.name)}</div><div class="small">📩 Lời mời kết bạn</div></div><div class="friend-actions"><button class="backbtn" onclick="acceptFriend('${x.name.replace(/'/g,"\\'")}')">Chấp nhận</button><button class="backbtn" onclick="declineFriend('${x.name.replace(/'/g,"\\'")}')">Từ chối</button></div></div>`);
-    html+=(d.friends||[]).map(x=>`<div class="friend-card">${friendAvatar(x.avatar,x.avatar)}<div class="friend-info"><div class="friend-name">${x.name} ${verifiedHTML(x.name)}</div><div class="small">🟢 Bạn bè</div></div><div class="friend-actions"><button class="backbtn" onclick="removeFriend('${x.name.replace(/'/g,"\\'")}')">Xóa bạn</button></div></div>`).join('');
-    if(!html)html='<div class="friend-empty">Chưa có bạn bè hoặc lời mời.</div>';
-    list.innerHTML=html;
-  }catch(e){list.innerHTML='<div class="friend-empty">Không tải được danh sách bạn bè.</div>'}
-}
-
-/* ----- real online room ----- */
-function stopOnlinePoll(){if(onlinePollTimer){clearInterval(onlinePollTimer);onlinePollTimer=null}}
-async function refreshOnlineRoom(){
-  if(!onlineRoomCode||!onlinePlayerId)return;
-  try{
-    const r=await api('/room/state?code='+encodeURIComponent(onlineRoomCode)+'&playerId='+encodeURIComponent(onlinePlayerId));
-    onlineRoomData=r;
-    if(r.state==='playing'){
-      stopOnlinePoll();
-      startNetworkGame(r);
-      return;
-    }
-    showOnlineRoom(r);
-  }catch(e){}
-}
-function startOnlinePoll(){
-  stopOnlinePoll();refreshOnlineRoom();onlinePollTimer=setInterval(refreshOnlineRoom,900);
-}
-function playerLabel(p){
-  return p.name+verifiedHTML(p.name)+(p.host?' <span class="small">👑 Chủ phòng</span>':'');
-}
-function showOnlineRoom(room){
-  const players=Object.values(room.players||{}).sort((a,b)=>a.seat-b.seat);
-  $('lobbyExtra').innerHTML=`
-  <div class="online-panel">
-    <div class="room-head"><h3>🌐 Phòng ${room.code}</h3><button class="backbtn" onclick="leaveOnlineRoom()">Rời phòng</button></div>
-    <div class="online-code">${room.code}</div>
-    <div class="sub">Mã phòng • ${players.length}/4 người</div>
-    <div class="players">${[0,1,2,3].map(s=>{
-      const p=players.find(x=>x.seat===s);
-      return `<div class="slot ${p?'ready':''}">${p?('👤 '+playerLabel(p)):'Chỗ trống'}</div>`;
-    }).join('')}</div>
-    <div class="status-online">${players.map(p=>'<div>🟢 '+playerLabel(p)+'</div>').join('')}</div>
-    ${room.host===onlinePlayerId?'<button class="btn" onclick="startOnlineGameIfHost()">▶ Bắt đầu ván</button>':''}
-    <div id="onlineMsg" class="msg">${players.length<2?'Cần ít nhất 2 người để bắt đầu.':'Đã sẵn sàng.'}</div>
-  </div>`;
-}
-async function createOnlineRoom(){
-  try{
-    const r=await api('/room/create',{method:'POST',body:JSON.stringify({name:user})});
-    onlineRoomCode=r.code;onlinePlayerId=r.playerId;onlineSeat=0;onlineRoomData=r;
-    showOnlineRoom(r);startOnlinePoll();
-  }catch(e){msg('onlineMsg',e.message)}
-}
-async function joinOnlineRoom(){
-  const code=($('joinCode')?.value||'').trim().toUpperCase();
-  if(!code)return msg('onlineMsg','Nhập mã phòng.');
-  try{
-    const r=await api('/room/join',{method:'POST',body:JSON.stringify({code,name:user})});
-    onlineRoomCode=r.code;onlinePlayerId=r.playerId;onlineSeat=r.seat;onlineRoomData=r;
-    showOnlineRoom(r);startOnlinePoll();
-  }catch(e){msg('onlineMsg',e.message)}
-}
-async function startOnlineGameIfHost(){
-  try{
-    const r=await api('/room/start',{method:'POST',body:JSON.stringify({code:onlineRoomCode,playerId:onlinePlayerId})});
-    onlineRoomData=r;stopOnlinePoll();startNetworkGame(r);
-  }catch(e){alert(e.message)}
-}
-async function leaveOnlineRoom(){
-  stopOnlinePoll();
-  if(onlineRoomCode&&onlinePlayerId)try{await api('/room/leave',{method:'POST',body:JSON.stringify({code:onlineRoomCode,playerId:onlinePlayerId})})}catch(e){}
-  onlineRoomCode='';onlinePlayerId='';onlineSeat=-1;onlineRoomData=null;backLobby();
-}
-function showOnline(){
-  $('lobbyExtra').innerHTML=`
-  <div class="online-panel">
-    <h3>🌐 Chơi Online</h3>
-    <button class="btn" onclick="createOnlineRoom()">Tạo phòng</button>
-    <div style="height:8px"></div>
-    <div class="dlc-row"><input id="joinCode" maxlength="6" placeholder="Nhập mã phòng"><button class="btn" style="width:auto;margin:0" onclick="joinOnlineRoom()">Vào phòng</button></div>
-    <div id="onlineMsg" class="msg"></div>
-  </div>`;
-}
-
-/* Online game: server owns the deck, turns and legal moves.
-   The client only receives its own hand, so cards never overlap between players. */
-function myOnlinePlayerSeat(){return onlineSeat}
-function renderOnlinePlayers(players){
-  for(let p=0;p<4;p++){
-    const el=document.querySelector('.p'+p);
-    if(!el)continue;
-    const pl=players?.find(x=>x.seat===p);
-    if(pl){
-      const nameEl=el.querySelector('.player-name');
-      if(nameEl)nameEl.innerHTML=pl.name+verifiedHTML(pl.name);
-      else {
-        const nodes=[...el.childNodes].filter(n=>n.nodeType===3);
-        if(nodes.length)nodes[nodes.length-1].textContent=pl.name;
-      }
-      const av=el.querySelector('.avatar');
-      if(av&&pl.avatar)av.innerHTML='<img src="'+pl.avatar.replace(/"/g,'&quot;')+'" style="width:100%;height:100%;object-fit:cover;border-radius:50%">';
-    }
-  }
-}
-function startNetworkGame(room){
-  gameMode='online';
-  $('lobby').style.display='none';$('game').style.display='block';
-  onlineRoomData=room;
-  onlineSeat=room.mySeat;
-  hands=[[],[],[],[]];
-  hands[onlineSeat]=room.myHand||[];
-  turn=room.turn||0;
-  last=room.last||null;
-  passes=room.passes||0;
-  passedPlayers=new Set(room.passedPlayers||[]);
-  gameOn=true;selected.clear();
-  $('deal').style.display='none';
-  renderOnlinePlayers(Object.values(room.players||{}));
-  render();
-  startTurnTimer();
-  if(!onlinePollTimer)syncNetworkTurn();
-}
-async function syncNetworkState(){
-  if(!onlineRoomCode||!onlinePlayerId||!gameOn)return;
-  try{
-    const r=await api('/room/state?code='+encodeURIComponent(onlineRoomCode)+'&playerId='+encodeURIComponent(onlinePlayerId));
-    onlineRoomData=r;onlineSeat=r.mySeat;
-    hands=[[],[],[],[]];hands[onlineSeat]=r.myHand||[];
-    turn=r.turn;last=r.last||null;passes=r.passes||0;passedPlayers=new Set(r.passedPlayers||[]);
-    renderOnlinePlayers(Object.values(r.players||{}));render();updateTurnTimers();
-    if(r.winner>=0){
-      roundWinner=(r.winner===onlineSeat)?0:r.winner;
-      endGame(r.winner===onlineSeat?'Bạn thắng! 🎉':'Ván kết thúc');
-      stopOnlinePoll();
-    }
-  }catch(e){}
-}
-function syncNetworkTurn(){
-  stopOnlinePoll();
-  onlinePollTimer=setInterval(syncNetworkState,700);
-  syncNetworkState();
-}
-</script>
-
-<script>
-const __oldRenderOtherHands=renderOtherHands;
-function renderOtherHands(){
-  if(gameMode==='online'&&onlineRoomData&&gameOn){
-    const players=Object.values(onlineRoomData.players||{});
-    for(let p=1;p<4;p++){
-      const el=$('h'+p);if(!el)continue;
-      const pl=players.find(x=>x.seat===p);
-      const count=onlineRoomData.counts?.[p]??0;
-      el.innerHTML='';
-      const cards=document.createElement('div');
-      cards.style.cssText='display:flex;justify-content:center;align-items:center;width:100%;height:36px;';
-      for(let i=0;i<count;i++){const d=document.createElement('span');d.className='cardback';cards.appendChild(d)}
-      const countEl=document.createElement('div');
-      countEl.style.cssText='font-size:11px;color:#b8d8cf;font-weight:700';
-      countEl.textContent=(pl?pl.name:'Chỗ trống')+' · '+count+' lá';
-      el.appendChild(cards);el.appendChild(countEl);
-    }
-    return;
-  }
-  __oldRenderOtherHands();
-}
-const __oldRender=render;
-function render(){
-  __oldRender();
-  if(gameMode==='online'&&onlineRoomData&&gameOn){
-    $('turn').textContent=(turn===onlineSeat)?'Lượt của bạn':('Lượt '+((Object.values(onlineRoomData.players||{}).find(x=>x.seat===turn)?.name)||('người chơi '+(turn+1))));
-    for(let p=0;p<4;p++){
-      const pl=Object.values(onlineRoomData.players||{}).find(x=>x.seat===p);
-      const el=document.querySelector('.p'+p);
-      if(!el||!pl)continue;
-      let badge=el.querySelector('.online-name-badge');
-      if(!badge){
-        badge=document.createElement('div');badge.className='online-name-badge';
-        el.insertBefore(badge,el.querySelector('.handcount'));
-      }
-      badge.innerHTML=pl.name+verifiedHTML(pl.name);
-    }
-  } else if(gameOn){
-    // Chế độ Bot: tuyệt đối không giữ tên/avatar của người chơi online trước đó.
-    for(let p=1;p<4;p++){
-      const el=document.querySelector('.p'+p); if(!el)continue;
-      const badge=el.querySelector('.online-name-badge'); if(badge)badge.remove();
-      const av=el.querySelector('.avatar'); if(av)av.innerHTML='🤖';
-      const textNodes=[...el.childNodes].filter(n=>n.nodeType===3);
-      if(textNodes.length)textNodes[textNodes.length-1].textContent='Bot '+p;
-    }
-  }
-}
-window.startBot=startBot;
 </script>
 </body>
 </html>
